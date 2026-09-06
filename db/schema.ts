@@ -1,0 +1,3 @@
+import {sqliteTable,text,integer,index} from 'drizzle-orm/sqlite-core';
+export const attempts=sqliteTable('attempts',{id:text('id').primaryKey(),userId:text('user_id').notNull(),caseId:text('case_id').notNull(),mode:text('mode').notNull(),chapter:integer('chapter').notNull(),choice:integer('choice').notNull(),correct:integer('correct').notNull(),hint:integer('hint').notNull(),duration:integer('duration').notNull(),created:text('created').notNull()},t=>[index('attempts_user').on(t.userId)]);
+export const customCases=sqliteTable('custom_cases',{id:text('id').primaryKey(),userId:text('user_id').notNull(),payload:text('payload').notNull()},t=>[index('cases_user').on(t.userId)]);

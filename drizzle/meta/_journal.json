@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1788701641403,
+      "tag": "0000_bitter_phil_sheldon",
+      "breakpoints": true
+    }
+  ]
+}
