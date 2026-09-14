@@ -1,0 +1,16 @@
+{
+  "name": "보건법규 심사관",
+  "short_name": "법규 심사관",
+  "description": "사례를 읽고 법령을 확인하며 판단하는 보건법규 학습 앱",
+  "lang": "ko-KR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#17232b",
+  "theme_color": "#17232b",
+  "icons": [
+    {"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}
