@@ -1,17 +1,3 @@
-import {visitor} from '../../../lib/guest';
-import {database} from '../../../lib/db';
-import {cases, type Case} from '../../../lib/cases';
-export const dynamic='force-dynamic';
-const reply=(data:unknown,status=200,cookie?:string)=>Response.json(data,{status,headers:{'Cache-Control':'no-store',...(cookie?{'Set-Cookie':cookie}:{})}});
-async function bank(uid:string){const rows=await database().prepare('SELECT payload FROM custom_cases WHERE user_id = ?').bind(uid).all<{payload:string}>();return [...cases,...rows.results.map(x=>JSON.parse(x.payload) as Case)];}
-export async function GET(req:Request){const v=(await visitor(req,true))!;const uid=v.uid;try{const rows=await database().prepare('SELECT * FROM attempts WHERE user_id = ? ORDER BY created, id').bind(uid).all();return reply({attempts:rows.results,cases:await bank(uid),guest:v.guest},200,v.cookie);}catch(e){console.error(e);return reply({error:'학습 기록을 불러오지 못했습니다. 다시 시도해 주세요.'},503);}}
-export async function POST(req:Request){const v=await visitor(req);if(!v)return reply({error:'게스트 기록을 연결하지 못했습니다. 쿠키를 허용한 뒤 새로고침해 주세요.'},401);const uid=v.uid;if(req.headers.get('origin') && req.headers.get('origin')!==new URL(req.url).origin)return reply({error:'잘못된 요청입니다.'},403);try{const b=await req.json();if(b.action==='import'){
-if(!Array.isArray(b.cases)||!b.cases.length||b.cases.length>200)return reply({error:'1~200개 문항의 JSON 배열이 필요합니다.'},400);
-const seen=new Set<string>();for(const c of b.cases){if(!c||['id','law','article','title','sender','body','explanation','rule','difficulty','source','origin'].some(k=>typeof c[k]!=='string'||!c[k].trim()||c[k].length>5000)||typeof c.answer!=='boolean'||!Array.isArray(c.details)||!c.details.length||c.details.length>15||c.details.some((x:unknown)=>typeof x!=='string'||x.length>2000)||!Number.isInteger(c.chapter)||c.chapter<0||c.chapter>4||!/^custom-[a-zA-Z0-9-]+$/.test(c.id)||seen.has(c.id)||!/^https:\/\/(www\.)?law\.go\.kr\//.test(c.source))return reply({error:'문항 형식을 확인해 주세요. ID는 custom-으로 시작하고 출처는 국가법령정보센터 주소여야 합니다.'},400);seen.add(c.id);}
-await database().batch(b.cases.map((c:Case)=>database().prepare('INSERT INTO custom_cases (id,user_id,payload) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload WHERE user_id=excluded.user_id').bind(uid+':'+c.id,uid,JSON.stringify(c))));return reply({cases:await bank(uid)});
+export async function GET() {
+  return Response.json({ message: "학습 기록은 이 기기의 브라우저에 저장됩니다." });
 }
-if(typeof b.id!=='string'||!/^[a-f0-9-]{36}$/.test(b.id)||typeof b.choice!=='boolean'||!['story','free','review','audit'].includes(b.mode)||!Number.isInteger(b.duration)||b.duration<0||b.duration>86400)return reply({error:'유효하지 않은 심사 기록입니다.'},400);
-const c=(await bank(uid)).find(x=>x.id===b.caseId);if(!c)return reply({error:'사건을 찾을 수 없습니다.'},404);
-const correct=c.answer===b.choice;await database().prepare('INSERT INTO attempts (id,user_id,case_id,mode,chapter,choice,correct,hint,duration,created) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING').bind(uid+':'+b.id,uid,c.id,b.mode,c.chapter,Number(b.choice),Number(correct),b.hint?1:0,b.duration,new Date().toISOString()).run();
-const rows=await database().prepare('SELECT * FROM attempts WHERE user_id = ? ORDER BY created, id').bind(uid).all();const saved=rows.results.find((a:any)=>a.id===uid+':'+b.id) as any;return reply({attempts:rows.results,correct:!!saved.correct});
-}catch(e){console.error(e);return reply({error:'저장하지 못했습니다. 같은 버튼을 눌러 다시 시도해 주세요.'},503);}}
