@@ -2,6 +2,7 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   nickname text not null unique check (char_length(nickname) between 2 and 20),
   is_admin boolean not null default false,
+  group_code text,
   created_at timestamptz not null default now()
 );
 
