@@ -45,7 +45,10 @@ as $$
     round(100.0 * count(a.id) filter (where a.correct) / nullif(count(a.id), 0), 1)
   from public.profiles p join public.attempts a on a.user_id = p.id
   group by p.id, p.nickname
-  order by correct desc, accuracy desc, solved desc
+  order by
+    count(a.id) filter (where a.correct) desc,
+    round(100.0 * count(a.id) filter (where a.correct) / nullif(count(a.id), 0), 1) desc,
+    count(a.id) desc
   limit 50;
 $$;
 grant execute on function public.leaderboard() to authenticated;
