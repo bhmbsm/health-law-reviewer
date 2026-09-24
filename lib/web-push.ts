@@ -5,7 +5,7 @@ const b64=(value:Buffer|string)=>Buffer.from(value).toString('base64url');
 const unb64=(value:string)=>Buffer.from(value,'base64url');
 const hkdf=(salt:Buffer,secret:Buffer,info:Buffer,length:number)=>{
   const prk=createHmac('sha256',salt).update(secret).digest();
-  let output=Buffer.alloc(0), previous=Buffer.alloc(0), counter=1;
+  let output:Buffer=Buffer.alloc(0), previous:Buffer=Buffer.alloc(0), counter=1;
   while(output.length<length){previous=createHmac('sha256',prk).update(Buffer.concat([previous,info,Buffer.from([counter++])])).digest();output=Buffer.concat([output,previous]);}
   return output.subarray(0,length);
 };
