@@ -18,7 +18,7 @@ export async function unsubscribeCurrentDevice(){
 
 type Notice={id:number;title:string;body:string;url:string};
 export default function PushControls({userId}:{userId:string|null}){
-  const [status,setStatus]=useState(''),[enabled,setEnabled]=useState(false),[notices,setNotices]=useState<Notice[]>([]);
+  const [status,setStatus]=useState(''),[enabled,setEnabled]=useState(false),[notices,setNotices]=useState<Notice[]>([]),[mood,setMood]=useState<'happy'|'neutral'|'sad'>('happy');
   useEffect(()=>{
     if(!userId||!supabase){setNotices([]);return;}
     supabase.from('in_app_notifications').select('id,title,body,url').eq('user_id',userId).order('id',{ascending:false}).limit(5).then(({data})=>setNotices((data||[]) as Notice[]));
@@ -44,14 +44,15 @@ export default function PushControls({userId}:{userId:string|null}){
   async function test(){
     try{
       const accessToken=await token();if(!accessToken)throw Error('로그인이 필요합니다.');
-      const response=await fetch('/api/push/test',{method:'POST',headers:{Authorization:`Bearer ${accessToken}`}});
+      const response=await fetch('/api/push/test',{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify({mood})});
       const result=await response.json();if(!response.ok)throw Error(result.error||'알림 발송에 실패했습니다.');
       setStatus(result.sent?'테스트 푸시를 발송했어요. Android 알림창을 확인해 주세요.':'앱 안 알림에 저장했어요. 푸시 구독과 배포 키를 확인해 주세요.');
+      setMood(mood==='happy'?'neutral':mood==='neutral'?'sad':'happy');
       if(supabase&&userId){const {data}=await supabase.from('in_app_notifications').select('id,title,body,url').eq('user_id',userId).order('id',{ascending:false}).limit(5);setNotices((data||[]) as Notice[]);}
     }catch(error){setStatus((error as Error).message);}
   }
   return <div style={{display:'inline-flex',flexDirection:'column',gap:4,alignItems:'flex-start'}}>
-    <div style={{display:'flex',gap:4}}><button className="install-button" onClick={subscribe} disabled={!userId}>{enabled?'알림 다시 연결':'알림 받기'}</button>{enabled&&<button className="install-button" onClick={test}>알림 테스트</button>}</div>
+    <div style={{display:'flex',gap:4}}><button className="install-button" onClick={subscribe} disabled={!userId}>{enabled?'알림 다시 연결':'알림 받기'}</button>{enabled&&<button className="install-button" onClick={test}>알림 테스트 {mood==='happy'?'😊':mood==='neutral'?'😐':'😣'}</button>}</div>
     {status&&<small role="status">{status}</small>}
     {notices.length>0&&<details><summary>앱 안 알림 {notices.length}건</summary>{notices.map(n=><p key={n.id}><a href={n.url}>{n.title}</a><br/>{n.body}</p>)}</details>}
   </div>;
