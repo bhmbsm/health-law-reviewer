@@ -33,7 +33,7 @@ export default function PushControls({userId}:{userId:string|null}){
       const permission=await Notification.requestPermission();
       if(permission!=='granted')throw Error('Android 설정에서 이 앱의 알림 권한을 허용해 주세요.');
       const registration=await navigator.serviceWorker.ready;
-      const subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:decodeKey(publicKey)});
+      const subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:decodeKey(publicKey).buffer as ArrayBuffer});
       const accessToken=await token();
       if(!accessToken)throw Error('로그인 세션이 만료되었습니다.');
       const response=await fetch('/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${accessToken}`},body:JSON.stringify(subscription.toJSON())});
