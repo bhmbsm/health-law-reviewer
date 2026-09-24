@@ -20,7 +20,7 @@ type Notice={id:number;title:string;body:string;url:string};
 export default function PushControls({userId}:{userId:string|null}){
   const [status,setStatus]=useState(''),[enabled,setEnabled]=useState(false),[notices,setNotices]=useState<Notice[]>([]),[mood,setMood]=useState<'happy'|'neutral'|'sad'>('happy');
   useEffect(()=>{
-    if(!userId||!supabase){setNotices([]);return;}
+    if(!userId||!supabase){setNotices([]);setEnabled(false);return;}
     supabase.from('in_app_notifications').select('id,title,body,url').eq('user_id',userId).order('id',{ascending:false}).limit(5).then(({data})=>setNotices((data||[]) as Notice[]));
     if('Notification' in window&&Notification.permission==='granted'&&'serviceWorker' in navigator){navigator.serviceWorker.getRegistration().then(r=>r?.pushManager.getSubscription()).then(s=>setEnabled(!!s)).catch(()=>setEnabled(false));}
   },[userId]);
