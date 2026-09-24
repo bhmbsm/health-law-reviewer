@@ -7,7 +7,8 @@ async function token(){const {data}=await supabase!.auth.getSession();return dat
 
 export async function unsubscribeCurrentDevice(){
   if(!supabase||!('serviceWorker' in navigator))return;
-  const registration=await navigator.serviceWorker.ready;
+  const registration=await navigator.serviceWorker.getRegistration();
+  if(!registration)return;
   const subscription=await registration.pushManager.getSubscription();
   if(!subscription)return;
   const accessToken=await token();
@@ -21,7 +22,7 @@ export default function PushControls({userId}:{userId:string|null}){
   useEffect(()=>{
     if(!userId||!supabase){setNotices([]);return;}
     supabase.from('in_app_notifications').select('id,title,body,url').eq('user_id',userId).order('id',{ascending:false}).limit(5).then(({data})=>setNotices((data||[]) as Notice[]));
-    if('Notification' in window)setEnabled(Notification.permission==='granted');
+    if('Notification' in window&&Notification.permission==='granted'&&'serviceWorker' in navigator){navigator.serviceWorker.getRegistration().then(r=>r?.pushManager.getSubscription()).then(s=>setEnabled(!!s)).catch(()=>setEnabled(false));}
   },[userId]);
   async function subscribe(){
     try{
@@ -46,6 +47,7 @@ export default function PushControls({userId}:{userId:string|null}){
       const response=await fetch('/api/push/test',{method:'POST',headers:{Authorization:`Bearer ${accessToken}`}});
       const result=await response.json();if(!response.ok)throw Error(result.error||'알림 발송에 실패했습니다.');
       setStatus(result.sent?'테스트 푸시를 발송했어요. Android 알림창을 확인해 주세요.':'앱 안 알림에 저장했어요. 푸시 구독과 배포 키를 확인해 주세요.');
+      if(supabase&&userId){const {data}=await supabase.from('in_app_notifications').select('id,title,body,url').eq('user_id',userId).order('id',{ascending:false}).limit(5);setNotices((data||[]) as Notice[]);}
     }catch(error){setStatus((error as Error).message);}
   }
   return <div style={{display:'inline-flex',flexDirection:'column',gap:4,alignItems:'flex-start'}}>
