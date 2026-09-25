@@ -31,3 +31,4 @@ body{background:#181918;color:#332c21}.office-scenery{position:fixed;inset:0;z-i
   .playing .mobile-tabbar{display:none}.playing{padding-bottom:0}.playing body{padding-bottom:0}.playing .game-header{position:relative}.playing .scene-window{margin-top:0}
 }
 @media(min-width:751px){.game-header .install-button{margin-left:auto}.game-header nav{margin-left:0}}
+.document .section-bar>span{display:none}.rule-text{white-space:pre-line}
