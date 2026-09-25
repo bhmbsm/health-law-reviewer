@@ -14,7 +14,7 @@ const sheetRows=(workbook:XLSX.WorkBook,name:string):Row[]=>{
 const facts=(value:Record<string,unknown>,labels:Record<string,string>={})=>Object.entries(value).map(([key,item])=>`${labels[key]||key}: ${Array.isArray(item)?item.join(', '):String(item)}`);
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const variants=(base:Record<string,unknown>,field:string,values:string[])=>values.length?values.slice(0,20).map(value=>({...base,[field]:value})):[base];
-const formatLawText=(value:string)=>value.replace(/\s*(?=[①-⑳])/g,'\n').replace(/\s*(?=\d+\.\s)/g,'\n').replace(/\s*(?=[가-하]\.\s)/g,'\n').replace(/\n{2,}/g,'\n').trim();
+const formatLawText=(value:string)=>value.replace(/\s*(?=[①-⑳])/g,'\n').replace(/(^|[^\d.])\s([1-9]\d?)\.\s(?=[가-힣「])/g,'$1\n$2. ').replace(/\s*(?=[가-하]\.\s)/g,'\n').replace(/\n{2,}/g,'\n').trim();
 
 export async function parseRuleBank(file:File):Promise<RuleBank>{
   const workbook=XLSX.read(await file.arrayBuffer(),{type:'array'});
