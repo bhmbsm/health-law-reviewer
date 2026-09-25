@@ -11,12 +11,26 @@ const sheetRows=(workbook:XLSX.WorkBook,name:string):Row[]=>{
   const sheet=workbook.Sheets[name];
   return sheet?XLSX.utils.sheet_to_json<Row>(sheet,{defval:''}):[];
 };
-const facts=(value:Record<string,unknown>,labels:Record<string,string>={})=>Object.entries(value).map(([key,item])=>`${labels[key]||key}: ${Array.isArray(item)?item.join(', '):String(item)}`);
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const variants=(base:Record<string,unknown>,field:string,values:string[])=>values.length?values.slice(0,20).map(value=>({...base,[field]:value})):[base];
-// 숫자(연도·날짜·금액)는 줄바꿈하지 않는다. 법령의 실제 구조 표시만 나눈다.
-const formatLawText=(value:string)=>value.replace(/\s*(?=[①-⑳])/g,'\n').replace(/\s*(?=[가-하]\.\s)/g,'\n').replace(/\n{2,}/g,'\n').trim();
-const caseBody=(rule:Rule)=>`${rule.law} ${rule.article}에 따른 「${rule.title}」 신청이 접수되었습니다.\n신청인이 제출한 사항이 법령 기준에 맞는지 확인한 뒤 승인 또는 반려를 결정하세요.`;
+// 법전 원문은 인위적으로 쪼개지 않는다. 날짜·호수까지 끊기면 읽기 어려워진다.
+const formatLawText=(value:string)=>value.replace(/\s+/g,' ').trim();
+const displayValue=(value:unknown)=>Array.isArray(value)?value.join(', '):String(value);
+const topicParticle=(word:string)=>{const code=word.charCodeAt(word.length-1);return code>=0xac00&&code<=0xd7a3&&(code-0xac00)%28!==0?'은':'는';};
+const factSentence=(key:string,value:unknown,label:string)=>{
+  const shown=displayValue(value);
+  if(/실형 종료.*집행면제.*경과 연수/.test(label)||key==='elapsed_years_4') return `금고 이상의 형의 집행이 종료된 뒤 ${shown}년이 지났습니다.`;
+  if(/집행유예.*경과 연수/.test(label)) return `집행유예 기간이 끝난 뒤 ${shown}년이 지났습니다.`;
+  const elapsed=label.match(/^(.*?)\s*경과(일수|개월 수|개월|연수|기간)(?:\(.*\))?$/);
+  if(elapsed){const unit=elapsed[2].includes('일')?'일':elapsed[2].includes('개월')?'개월':'년';return `${elapsed[1].trim()} ${shown}${unit}이 지났습니다.`;}
+  const unit=/병상/.test(label)?'병상':/인원|위원 수|인원\(명\)|수\(명\)/.test(label)?'명':/횟수/.test(label)?'회':'';
+  if(unit&&/^\d+$/.test(shown)) return `제출 서류상 ${label.replace(/\(.*?\)/g,'').trim()}는 ${shown}${unit}입니다.`;
+  return `제출 서류상 ${label}${topicParticle(label)} ${shown}입니다.`;
+};
+const facts=(value:Record<string,unknown>,labels:Record<string,string>={})=>Object.entries(value).map(([key,item])=>factSentence(key,item,labels[key]||key));
+const caseBody=(rule:Rule)=>rule.id==='MED-DISQUAL-YEARS-4'
+  ? 'A씨는 금고 이상의 형의 집행이 종료된 뒤 의료인 면허를 신청했습니다. 면허를 발급해도 되는지 판단하세요.'
+  : `한 신청인이 「${rule.title}」에 관한 처리를 요청했습니다. 제출한 서류를 검토해 승인 또는 반려를 결정하세요.`;
 
 export async function parseRuleBank(file:File):Promise<RuleBank>{
   const workbook=XLSX.read(await file.arrayBuffer(),{type:'array'});
