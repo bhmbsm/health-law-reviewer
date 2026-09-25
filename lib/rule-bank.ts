@@ -14,7 +14,9 @@ const sheetRows=(workbook:XLSX.WorkBook,name:string):Row[]=>{
 const facts=(value:Record<string,unknown>,labels:Record<string,string>={})=>Object.entries(value).map(([key,item])=>`${labels[key]||key}: ${Array.isArray(item)?item.join(', '):String(item)}`);
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const variants=(base:Record<string,unknown>,field:string,values:string[])=>values.length?values.slice(0,20).map(value=>({...base,[field]:value})):[base];
-const formatLawText=(value:string)=>value.replace(/\s*(?=[①-⑳])/g,'\n').replace(/(^|[^\d.])\s([1-9]\d?)\.\s(?=[가-힣「])/g,'$1\n$2. ').replace(/\s*(?=[가-하]\.\s)/g,'\n').replace(/\n{2,}/g,'\n').trim();
+// 숫자(연도·날짜·금액)는 줄바꿈하지 않는다. 법령의 실제 구조 표시만 나눈다.
+const formatLawText=(value:string)=>value.replace(/\s*(?=[①-⑳])/g,'\n').replace(/\s*(?=[가-하]\.\s)/g,'\n').replace(/\n{2,}/g,'\n').trim();
+const caseBody=(rule:Rule)=>`${rule.law} ${rule.article}에 따른 「${rule.title}」 신청이 접수되었습니다.\n신청인이 제출한 사항이 법령 기준에 맞는지 확인한 뒤 승인 또는 반려를 결정하세요.`;
 
 export async function parseRuleBank(file:File):Promise<RuleBank>{
   const workbook=XLSX.read(await file.arrayBuffer(),{type:'array'});
@@ -50,6 +52,6 @@ export async function parseRuleBank(file:File):Promise<RuleBank>{
 export const isRuleBank=(value:unknown):value is RuleBank=>!!value&&typeof value==='object'&&(value as RuleBank).kind==='rule-bank'&&Array.isArray((value as RuleBank).rules);
 export function makeRuleCase(bank:RuleBank,rule:Rule,approved:boolean,index=0):Case{
   const selected=(approved?rule.approveFacts:rule.rejectFacts)[index];
-  return {id:`${bank.id}:${rule.id}:${approved?'approve':'reject'}:${index}`,law:rule.law,article:rule.article,title:rule.title,sender:'보건법규 심사 접수실',body:rule.scenario||`${rule.law} ${rule.article} 기준을 심사합니다.`,details:facts(selected,rule.factLabels),answer:approved,explanation:rule.note||`${rule.article}의 기준에 따라 판정합니다.`,rule:rule.lawText||rule.article,chapter:0,difficulty:rule.difficulty==='쉬움'?'기초':rule.difficulty==='어려움'?'심화':'응용',source:rule.source,origin:`자동출제 규칙 · ${bank.name}`};
+  return {id:`${bank.id}:${rule.id}:${approved?'approve':'reject'}:${index}`,law:rule.law,article:rule.article,title:rule.title,sender:'보건법규 심사 접수실',body:caseBody(rule),details:facts(selected,rule.factLabels),answer:approved,explanation:rule.note||`${rule.article}의 기준에 따라 판정합니다.`,rule:rule.lawText||rule.article,chapter:0,difficulty:rule.difficulty==='쉬움'?'기초':rule.difficulty==='어려움'?'심화':'응용',source:rule.source,origin:`자동출제 규칙 · ${bank.name}`};
 }
 export function makeRuleCases(banks:RuleBank[]):Case[]{return banks.flatMap(bank=>bank.rules.flatMap(rule=>[...rule.approveFacts.map((_,index)=>makeRuleCase(bank,rule,true,index)),...rule.rejectFacts.map((_,index)=>makeRuleCase(bank,rule,false,index))]));}
