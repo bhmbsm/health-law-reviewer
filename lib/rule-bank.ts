@@ -14,6 +14,7 @@ const sheetRows=(workbook:XLSX.WorkBook,name:string):Row[]=>{
 const facts=(value:Record<string,unknown>,labels:Record<string,string>={})=>Object.entries(value).map(([key,item])=>`${labels[key]||key}: ${Array.isArray(item)?item.join(', '):String(item)}`);
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const variants=(base:Record<string,unknown>,field:string,values:string[])=>values.length?values.slice(0,20).map(value=>({...base,[field]:value})):[base];
+const formatLawText=(value:string)=>value.replace(/\s*(?=[①-⑳])/g,'\n').replace(/\s*(?=\d+\.\s)/g,'\n').replace(/\s*(?=[가-하]\.\s)/g,'\n').replace(/\n{2,}/g,'\n').trim();
 
 export async function parseRuleBank(file:File):Promise<RuleBank>{
   const workbook=XLSX.read(await file.arrayBuffer(),{type:'array'});
@@ -40,7 +41,7 @@ export async function parseRuleBank(file:File):Promise<RuleBank>{
     const passValues=values.filter(item=>text(item['목록ID'])===listId&&text(item['판정역할'])==='통과').map(item=>text(item['표시값'])).filter(Boolean);
     const rejectValues=values.filter(item=>text(item['목록ID'])===listId&&text(item['판정역할'])==='반려').map(item=>text(item['표시값'])).filter(Boolean);
     const factLabels=Object.fromEntries(criteria.filter(item=>text(item['규칙ID'])===id).map(item=>[text(item['필드키']),text(item['화면 표시명'])||text(item['필드키'])]));
-    return {id,lawKey,law:text(lawRow['법령명'])||'의료법',article:text(row['주요참조'])||text(lawRow['조문참조']),title:text(row['문항명']),difficulty:text(row['난이도'])||'보통',note:text(row['메모']),scenario:text(row['고정 시나리오'])||text(preview?.['승인 사례(화면 초안)']),approveFacts:variants(approve,changedField,passValues),rejectFacts:variants(reject,changedField,rejectValues),factLabels,source:text(lawRow['공식 링크']),lawText:text(lawRow['조문 원문'])};
+    return {id,lawKey,law:text(lawRow['법령명'])||'의료법',article:text(row['주요참조'])||text(lawRow['조문참조']),title:text(row['문항명']),difficulty:text(row['난이도'])||'보통',note:text(row['메모']),scenario:text(row['고정 시나리오'])||text(preview?.['승인 사례(화면 초안)']),approveFacts:variants(approve,changedField,passValues),rejectFacts:variants(reject,changedField,rejectValues),factLabels,source:text(lawRow['공식 링크']),lawText:formatLawText(text(lawRow['조문 원문']))};
   }).filter((rule):rule is Rule=>rule!==null);
   if(!rules.length) throw Error('검수 통과한 출제 규칙을 찾지 못했습니다.');
   return {kind:'rule-bank',id:`rulebank-${Date.now()}`,name:file.name.replace(/\.xlsx$/i,''),rules,createdAt:new Date().toISOString()};
