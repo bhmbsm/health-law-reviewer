@@ -16,15 +16,16 @@ const variants=(base:Record<string,unknown>,field:string,values:string[])=>value
 // 법전 원문은 인위적으로 쪼개지 않는다. 날짜·호수까지 끊기면 읽기 어려워진다.
 const formatLawText=(value:string)=>value.replace(/\s+/g,' ').trim();
 const displayValue=(value:unknown)=>Array.isArray(value)?value.join(', '):String(value);
+const topicParticle=(word:string)=>{const code=word.charCodeAt(word.length-1);return code>=0xac00&&code<=0xd7a3&&(code-0xac00)%28!==0?'은':'는';};
 const factSentence=(key:string,value:unknown,label:string)=>{
   const shown=displayValue(value);
   if(/실형 종료.*집행면제.*경과 연수/.test(label)||key==='elapsed_years_4') return `금고 이상의 형의 집행이 종료된 뒤 ${shown}년이 지났습니다.`;
   if(/집행유예.*경과 연수/.test(label)) return `집행유예 기간이 끝난 뒤 ${shown}년이 지났습니다.`;
-  const elapsed=label.match(/^(.*?)(?:부터|후)?\s*경과(일수|개월 수|개월|연수|기간)\(?(.+)?$/);
+  const elapsed=label.match(/^(.*?)\s*경과(일수|개월 수|개월|연수|기간)(?:\(.*\))?$/);
   if(elapsed){const unit=elapsed[2].includes('일')?'일':elapsed[2].includes('개월')?'개월':'년';return `${elapsed[1].trim()} ${shown}${unit}이 지났습니다.`;}
   const unit=/병상/.test(label)?'병상':/인원|위원 수|인원\(명\)|수\(명\)/.test(label)?'명':/횟수/.test(label)?'회':'';
   if(unit&&/^\d+$/.test(shown)) return `제출 서류상 ${label.replace(/\(.*?\)/g,'').trim()}는 ${shown}${unit}입니다.`;
-  return `제출 서류에는 ${label}을(를) ${shown}(으)로 기재했습니다.`;
+  return `제출 서류상 ${label}${topicParticle(label)} ${shown}입니다.`;
 };
 const facts=(value:Record<string,unknown>,labels:Record<string,string>={})=>Object.entries(value).map(([key,item])=>factSentence(key,item,labels[key]||key));
 const caseBody=(rule:Rule)=>rule.id==='MED-DISQUAL-YEARS-4'
