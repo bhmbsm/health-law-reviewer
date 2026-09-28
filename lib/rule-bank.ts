@@ -27,6 +27,16 @@ const factSentence=(key:string,value:unknown,label:string)=>{
   if(unit&&/^\d+$/.test(shown)) return `제출 서류상 ${label.replace(/\(.*?\)/g,'').trim()}는 ${shown}${unit}입니다.`;
   return `제출 서류상 ${label}${topicParticle(label)} ${shown}입니다.`;
 };
+const randomBackgroundValue=(value:unknown)=>{
+  if(typeof value!=='string') return value;
+  const match=value.match(/^RAND_INT:(\d+):(\d+):(\d+)$/);
+  if(!match) return value;
+  const low=Number(match[1]);const high=Number(match[2]);const step=Number(match[3]);
+  if(!Number.isInteger(low)||!Number.isInteger(high)||!Number.isInteger(step)||step<=0||low>high) return value;
+  const count=Math.floor((high-low)/step)+1;
+  return low+Math.floor(Math.random()*count)*step;
+};
+const materializeFacts=(value:Record<string,unknown>)=>Object.fromEntries(Object.entries(value).map(([key,item])=>[key,randomBackgroundValue(item)]));
 const facts=(value:Record<string,unknown>,labels:Record<string,string>={})=>Object.entries(value).map(([key,item])=>factSentence(key,item,labels[key]||key));
 const caseBody=(rule:Rule)=>rule.id==='MED-DISQUAL-YEARS-4'
   ? 'A씨는 금고 이상의 형의 집행이 종료된 뒤 의료인 면허를 신청했습니다. 면허를 발급해도 되는지 판단하세요.'
@@ -62,7 +72,7 @@ export async function parseRuleBank(file:File):Promise<RuleBank>{
 
 export const isRuleBank=(value:unknown):value is RuleBank=>!!value&&typeof value==='object'&&(value as RuleBank).kind==='rule-bank'&&Array.isArray((value as RuleBank).rules);
 export function makeRuleCase(bank:RuleBank,rule:Rule,approved:boolean,index=0):Case{
-  const selected=(approved?rule.approveFacts:rule.rejectFacts)[index];
+  const selected=materializeFacts((approved?rule.approveFacts:rule.rejectFacts)[index]);
   return {id:`${bank.id}:${rule.id}:${approved?'approve':'reject'}:${index}`,law:rule.law,article:rule.article,title:rule.title,sender:'보건법규 심사 접수실',body:caseBody(rule),details:facts(selected,rule.factLabels),answer:approved,explanation:rule.note||`${rule.article}의 기준에 따라 판정합니다.`,rule:rule.lawText||rule.article,chapter:0,difficulty:rule.difficulty==='쉬움'?'기초':rule.difficulty==='어려움'?'심화':'응용',source:rule.source,origin:`자동출제 규칙 · ${bank.name}`};
 }
 export function makeRuleCases(banks:RuleBank[]):Case[]{return banks.flatMap(bank=>bank.rules.flatMap(rule=>[...rule.approveFacts.map((_,index)=>makeRuleCase(bank,rule,true,index)),...rule.rejectFacts.map((_,index)=>makeRuleCase(bank,rule,false,index))]));}
