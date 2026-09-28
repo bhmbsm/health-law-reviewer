@@ -13,6 +13,14 @@ const sheetRows=(workbook:XLSX.WorkBook,name:string):Row[]=>{
 };
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const variants=(base:Record<string,unknown>,field:string,values:string[])=>values.length?values.slice(0,20).map(value=>({...base,[field]:value})):[base];
+const materializeFacts=(source:Record<string,unknown>|undefined):Record<string,unknown>=>Object.fromEntries(Object.entries(source||{}).map(([key,value])=>{
+  if(typeof value!=='string') return [key,value];
+  const match=value.match(/^RAND_INT:(\d+):(\d+):(\d+)$/);
+  if(!match) return [key,value];
+  const min=Number(match[1]),max=Number(match[2]),step=Number(match[3]);
+  const count=Math.floor((max-min)/step);
+  return [key,String(min+Math.floor(Math.random()*(count+1))*step)];
+}));
 // 법전 원문은 인위적으로 쪼개지 않는다. 날짜·호수까지 끊기면 읽기 어려워진다.
 const formatLawText=(value:string)=>value.replace(/\r\n/g,'\n').trim();
 const displayValue=(value:unknown)=>Array.isArray(value)?value.join(', '):String(value);
