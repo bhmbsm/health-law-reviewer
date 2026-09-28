@@ -32,6 +32,7 @@ const factSentence=(key:string,value:unknown,label:string)=>{
   if(key==='department_count') return `설치 예정 진료과목은 모두 ${shown}개입니다.`;
   if(key==='specialist') return '각 진료과목마다 전속 전문의를 배치했습니다.';
   if(key==='guidance') return `보고된 지도 업무는 ${shown}입니다.`;
+  if(key==='midwife_duty') return `조산, 임산부ㆍ태아ㆍ신생아에 대한 산전ㆍ산후관리, 보건교육ㆍ상담 및 ${shown}를 수행했습니다.`;
   if(key==='medical_service') return `제공한 의료는 ${shown}입니다.`;
   if(key==='scope') return `업무 대상은 ${shown}입니다.`;
   if(key==='supervision') return `해당 업무는 ${shown} 시행했습니다.`;
