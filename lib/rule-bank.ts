@@ -14,33 +14,32 @@ const sheetRows=(workbook:XLSX.WorkBook,name:string):Row[]=>{
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const variants=(base:Record<string,unknown>,field:string,values:string[])=>values.length?values.slice(0,20).map(value=>({...base,[field]:value})):[base];
 // 법전 원문은 인위적으로 쪼개지 않는다. 날짜·호수까지 끊기면 읽기 어려워진다.
-const formatLawText=(value:string)=>value.replace(/\s+/g,' ').trim();
+const formatLawText=(value:string)=>value.replace(/\r\n/g,'\n').trim();
 const displayValue=(value:unknown)=>Array.isArray(value)?value.join(', '):String(value);
 const topicParticle=(word:string)=>{const code=word.charCodeAt(word.length-1);return code>=0xac00&&code<=0xd7a3&&(code-0xac00)%28!==0?'은':'는';};
 const factSentence=(key:string,value:unknown,label:string)=>{
   const shown=displayValue(value);
-  if(/실형 종료.*집행면제.*경과 연수/.test(label)||key==='elapsed_years_4') return `금고 이상의 형의 집행이 종료된 뒤 ${shown}년이 지났습니다.`;
-  if(/집행유예.*경과 연수/.test(label)) return `집행유예 기간이 끝난 뒤 ${shown}년이 지났습니다.`;
-  const elapsed=label.match(/^(.*?)\s*경과(일수|개월 수|개월|연수|기간)(?:\(.*\))?$/);
-  if(elapsed){const unit=elapsed[2].includes('일')?'일':elapsed[2].includes('개월')?'개월':'년';return `${elapsed[1].trim()} ${shown}${unit}이 지났습니다.`;}
-  const unit=/병상/.test(label)?'병상':/인원|위원 수|인원\(명\)|수\(명\)/.test(label)?'명':/횟수/.test(label)?'회':'';
-  if(unit&&/^\d+$/.test(shown)) return `제출 서류상 ${label.replace(/\(.*?\)/g,'').trim()}는 ${shown}${unit}입니다.`;
-  return `제출 서류상 ${label}${topicParticle(label)} ${shown}입니다.`;
+  if(key==='bed_count') return `개설 예정 병상은 ${shown}병상입니다.`;
+  if(key==='departments') return `설치 예정 진료과목은 ${shown}입니다.`;
+  if(key==='department_count') return `설치 예정 진료과목은 모두 ${shown}개입니다.`;
+  if(key==='specialist') return '각 진료과목마다 전속 전문의를 배치했습니다.';
+  if(key==='guidance') return `보고된 지도 업무는 ${shown}입니다.`;
+  if(key==='medical_service') return `제공한 의료는 ${shown}입니다.`;
+  if(key==='scope') return `업무 대상은 ${shown}입니다.`;
+  if(key==='supervision') return `해당 업무는 ${shown} 시행했습니다.`;
+  if(key==='institution_type') return `신청 의료기관의 종류는 ${shown}입니다.`;
+  if(key==='treatment_target'||key==='target') return `전문적으로 수행하려는 의료행위 대상은 ${shown}입니다.`;
+  if(key==='training') return shown==='없음'?'전문의 수련기관으로 운영하지 않습니다.':'전문의가 되려는 사람을 수련시키는 기관으로 운영합니다.';
+  if(key==='resources') return '법정 인력ㆍ시설ㆍ장비 요건을 갖추었습니다.';
+  if(key==='case_mix') return '질병군별 환자구성비율은 법정 기준에 해당합니다.';
+  if(key==='designator') return `지정권자는 ${shown}입니다.`;
+  if(key==='review_years') return `다음 평가는 ${shown}년 뒤에 받겠다고 신청했습니다.`;
+  if(key==='fine_amount') return `통지된 과태료는 ${shown}만원입니다.`;
+  if(key==='name_badge') return `명찰에는 “${shown}”라고 표시되어 있습니다.`;
+  return `${label}${topicParticle(label)} ${shown}입니다.`;
 };
-const randomBackgroundValue=(value:unknown)=>{
-  if(typeof value!=='string') return value;
-  const match=value.match(/^RAND_INT:(\d+):(\d+):(\d+)$/);
-  if(!match) return value;
-  const low=Number(match[1]);const high=Number(match[2]);const step=Number(match[3]);
-  if(!Number.isInteger(low)||!Number.isInteger(high)||!Number.isInteger(step)||step<=0||low>high) return value;
-  const count=Math.floor((high-low)/step)+1;
-  return low+Math.floor(Math.random()*count)*step;
-};
-const materializeFacts=(value:Record<string,unknown>)=>Object.fromEntries(Object.entries(value).map(([key,item])=>[key,randomBackgroundValue(item)]));
 const facts=(value:Record<string,unknown>,labels:Record<string,string>={})=>Object.entries(value).map(([key,item])=>factSentence(key,item,labels[key]||key));
-const caseBody=(rule:Rule)=>rule.id==='MED-DISQUAL-YEARS-4'
-  ? 'A씨는 금고 이상의 형의 집행이 종료된 뒤 의료인 면허를 신청했습니다. 면허를 발급해도 되는지 판단하세요.'
-  : `한 신청인이 「${rule.title}」에 관한 처리를 요청했습니다. 제출한 서류를 검토해 승인 또는 반려를 결정하세요.`;
+const caseBody=(rule:Rule)=>rule.scenario?`${rule.scenario} 이 신청을 승인할 수 있는지 판단하세요.`:'제출된 신청 내용을 검토해 승인 또는 반려를 결정하세요.';
 
 export async function parseRuleBank(file:File):Promise<RuleBank>{
   const workbook=XLSX.read(await file.arrayBuffer(),{type:'array'});
