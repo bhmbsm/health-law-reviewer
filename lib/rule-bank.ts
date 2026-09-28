@@ -40,13 +40,10 @@ export async function parseRuleBank(file:File):Promise<RuleBank>{
   const previews=new Map(sheetRows(workbook,'학생 사례 미리보기').map(row=>[text(row['규칙ID']),row]));
   const criteria=sheetRows(workbook,'판정기준');
   const values=sheetRows(workbook,'값목록');
-  const today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Seoul'});
   const rawRules=sheetRows(workbook,'문항규칙').filter(row=>text(row['출제 상태'])!=='비출제');
   const rules=rawRules.map(row=>{
     const id=text(row['규칙ID']);const lawKey=text(row['법전키']);const lawRow=laws.get(lawKey);const checked=verification.get(id);const preview=previews.get(id);
     if(!id||!lawRow||!checked) return null;
-    const effectiveDate=text(lawRow['기준일']);
-    if(/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)&&effectiveDate>today) return null;
     const approve=object(checked['승인 사실값(JSON)']||row['승인 사례 사실값(JSON)']);
     const reject=object(checked['반려 사실값(JSON)']||row['반려 사례 사실값(JSON)']);
     if(!Object.keys(approve).length||!Object.keys(reject).length||text(checked['변경 사실 개수'])!=='1'||text(checked['검증 상태'])!=='통과') return null;
