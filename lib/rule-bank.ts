@@ -34,6 +34,8 @@ const factSentence=(key:string,value:unknown,label:string)=>{
   if(key==='case_mix') return '질병군별 환자구성비율은 법정 기준에 해당합니다.';
   if(key==='designator') return `지정권자는 ${shown}입니다.`;
   if(key==='review_years') return `다음 평가는 ${shown}년 뒤에 받겠다고 신청했습니다.`;
+  if(key==='fine_amount') return `통지된 과태료는 ${shown}만원입니다.`;
+  if(key==='name_badge') return `명찰에는 “${shown}”라고 표시되어 있습니다.`;
   return `${label}${topicParticle(label)} ${shown}입니다.`;
 };
 const facts=(value:Record<string,unknown>,labels:Record<string,string>={})=>Object.entries(value).map(([key,item])=>factSentence(key,item,labels[key]||key));
