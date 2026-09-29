@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx';
 import type {Case} from './cases';
 
 export type RuleBank={kind:'rule-bank';id:string;name:string;rules:Rule[];createdAt:string};
-export type Rule={id:string;lawKey:string;law:string;article:string;title:string;difficulty:string;note:string;scenario:string;approveFacts:Record<string,unknown>[];rejectFacts:Record<string,unknown>[];factLabels:Record<string,string>;factOrder:string[];changedField:string;source:string;lawText:string;approveBody?:string;rejectBody?:string};
+export type Rule={id:string;lawKey:string;law:string;article:string;title:string;difficulty:string;note:string;scenario:string;approveFacts:Record<string,unknown>[];rejectFacts:Record<string,unknown>[];factLabels:Record<string,string>;factOrder:string[];changedField:string;source:string;lawText:string;approveBody:string;rejectBody:string};
 type Row=Record<string,unknown>;
 
 const text=(value:unknown)=>String(value??'').trim();
