@@ -71,7 +71,11 @@ export async function parseRuleBank(file:File):Promise<RuleBank>{
     if(!id||!lawRow||!checked) return null;
     const approve=object(checked['승인 사실값(JSON)']||row['승인 사례 사실값(JSON)']);
     const reject=object(checked['반려 사실값(JSON)']||row['반려 사례 사실값(JSON)']);
-    if(!Object.keys(approve).length||!Object.keys(reject).length||text(checked['변경 사실 개수'])!=='1'||text(checked['검증 상태'])!=='통과') return null;
+    const hasApprove=Object.keys(approve).length>0;
+    const hasReject=Object.keys(reject).length>0;
+    const changedCount=text(checked['변경 사실 개수']);
+    if((!hasApprove&&!hasReject)||text(checked['검증 상태'])!=='통과') return null;
+    if(hasApprove&&hasReject&&changedCount!=='1') return null;
     const changedField=text(checked['변경 필드키'])||Object.keys({...approve,...reject}).find(key=>!same(approve[key],reject[key]))||'';
     const criterion=criteria.find(item=>text(item['규칙ID'])===id&&text(item['필드키'])===changedField);
     if(!changedField||!criterion) return null;
@@ -79,7 +83,7 @@ export async function parseRuleBank(file:File):Promise<RuleBank>{
     const passValues=values.filter(item=>text(item['목록ID'])===listId&&text(item['판정역할'])==='통과').map(item=>text(item['표시값'])).filter(Boolean);
     const rejectValues=values.filter(item=>text(item['목록ID'])===listId&&text(item['판정역할'])==='반려').map(item=>text(item['표시값'])).filter(Boolean);
     const factLabels=Object.fromEntries(criteria.filter(item=>text(item['규칙ID'])===id).map(item=>[text(item['필드키']),text(item['화면 표시명'])||text(item['필드키'])]));
-    return {id,lawKey,law:text(lawRow['법령명'])||'의료법',article:text(row['주요참조'])||text(lawRow['조문참조']),title:text(row['문항명']),difficulty:text(row['난이도'])||'보통',note:text(row['메모']),scenario:text(row['고정 시나리오'])||text(preview?.['승인 사례(화면 초안)']),approveFacts:variants(approve,changedField,passValues),rejectFacts:variants(reject,changedField,rejectValues),factLabels,factOrder:criteria.filter(item=>text(item['규칙ID'])===id).map(item=>text(item['필드키'])).filter(Boolean),changedField,source:text(lawRow['공식 링크']),lawText:formatLawText(text(lawRow['조문 원문'])),approveBody:text(preview?.['승인 사례(화면 초안)']),rejectBody:text(preview?.['반려 사례(화면 초안)'])};
+    return {id,lawKey,law:text(lawRow['법령명'])||'의료법',article:text(row['주요참조'])||text(lawRow['조문참조']),title:text(row['문항명']),difficulty:text(row['난이도'])||'보통',note:text(row['메모']),scenario:text(row['고정 시나리오'])||text(preview?.['승인 사례(화면 초안)']),approveFacts:hasApprove?variants(approve,changedField,passValues):[],rejectFacts:hasReject?variants(reject,changedField,rejectValues):[],factLabels,factOrder:criteria.filter(item=>text(item['규칙ID'])===id).map(item=>text(item['필드키'])).filter(Boolean),changedField,source:text(lawRow['공식 링크']),lawText:formatLawText(text(lawRow['조문 원문'])),approveBody:text(preview?.['승인 사례(화면 초안)']),rejectBody:text(preview?.['반려 사례(화면 초안)'])};
   }).filter((rule):rule is Rule=>rule!==null);
   if(!rules.length) throw Error('검수 통과한 출제 규칙을 찾지 못했습니다.');
   return {kind:'rule-bank',id:file.name.includes('응급의료법')?'rulebank-emergency-medical-law':`rulebank-${file.name.replace(/[^a-z0-9]/gi,'-').toLowerCase().replace(/^-+|-+$/g,'')||'uploaded'}`,name:file.name.replace(/\.xlsx$/i,''),rules,createdAt:new Date().toISOString()};
