@@ -4,10 +4,10 @@
 2. Vercel 환경변수를 등록한다. 값은 GitHub에 넣지 않는다.
    - `NEXT_PUBLIC_SUPABASE_URL`: Supabase 프로젝트 URL
    - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: 브라우저용 공개 키
-   - `SUPABASE_SERVICE_ROLE_KEY`: 서버 전용 키
+   - `SUPABASE_SERVICE_ROLE_KEY`: 서버 전용 Secret key 또는 기존 service_role 키. Production의 Secret 유형으로 등록한다.
    - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` 및 `VAPID_PUBLIC_KEY`: 동일한 P-256 공개 키
    - `VAPID_PRIVATE_KEY`: 대응하는 비밀 키
-   - `VAPID_SUBJECT`: `mailto:관리자이메일` 형식
+   - `VAPID_SUBJECT`: `mailto:관리자이메일` 또는 운영 웹앱의 HTTPS 주소
    - `CRON_SECRET`: Vercel Cron 인증용 임의 비밀 값
 3. VAPID 키 한 쌍을 생성한다. 아래 명령의 출력 중 비밀 키는 Vercel 서버 환경변수에만 넣는다.
 
