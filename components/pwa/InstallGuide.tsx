@@ -35,7 +35,7 @@ export default function InstallGuide({ installAvailable, onInstall }: Props) {
 
   if (installed || !platform) return null;
   return <>
-    <button className="install-button pwa-guide-trigger" onClick={() => setOpen(true)}><Smartphone size={16} />설치 안내</button>
+    <button className="install-button pwa-guide-trigger" aria-label="설치 안내" onClick={() => setOpen(true)}><Smartphone size={16} /><span>설치 안내</span></button>
     {open && <div className="pwa-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
       <section className="pwa-dialog" role="dialog" aria-modal="true" aria-labelledby="pwa-title">
         <button className="pwa-close" aria-label="안내 닫기" onClick={() => setOpen(false)}><X size={20} /></button>

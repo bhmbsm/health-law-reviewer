@@ -78,5 +78,5 @@ export default function NotificationButton({ onShowInstallGuide }: Props) {
         ? '설정에서 알림을 허용해주세요.'
         : message;
 
-  return <div className="notification-control"><button className="notification-button" aria-label={label} aria-expanded={messageOpen} title={label} onClick={() => void requestPermission()} disabled={!device.ready}><Bell size={16} />{label}</button>{messageOpen && guidance && <small role="status">{guidance}</small>}</div>;
+  return <div className="notification-control"><button className="notification-button" aria-label={label} aria-expanded={messageOpen} title={label} onClick={() => void requestPermission()} disabled={!device.ready}><Bell size={16} /><span>{label}</span></button>{messageOpen && guidance && <small role="status">{guidance}</small>}</div>;
 }
