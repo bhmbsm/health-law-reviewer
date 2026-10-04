@@ -5,7 +5,7 @@ import type { Case } from '../../lib/cases';
 import { applyStoryResult, initialStoryStats, lawSearchUrl, randomChapterCases, storyChapters, type StoryStats } from '../../lib/story';
 import { loadStoryProgress, saveStoryProgress, type StoryProgress } from '../../lib/story-progress';
 
-type Props = { bank: Case[]; onExit: () => void; experience: number; storyAttemptedCaseIds: string[]; onAttempt: (item: Case, choice: boolean, correct: boolean, duration: number) => Promise<void> };
+type Props = { userId: string | null; bank: Case[]; onExit: () => void; experience: number; storyAttemptedCaseIds: string[]; onAttempt: (item: Case, choice: boolean, correct: boolean, duration: number) => Promise<void> };
 type Stage = 'campaign' | 'briefing' | 'case' | 'incident' | 'summary';
 
 const rankIcons = { badge: Badge, shield: Shield, badgeCheck: BadgeCheck, shieldCheck: ShieldCheck, medal: Medal, award: Award, star: Star, crown: Crown, trophy: Trophy, gem: Gem, landmark: Landmark, sparkles: Sparkles };
@@ -72,7 +72,7 @@ function FloatingDelta({ value }: { value: number }) {
   return <span key={`${value}-${delta}`} className={`story-floating-delta ${delta > 0 ? 'increase' : 'decrease'}`} aria-hidden="true">{delta > 0 ? '+' : '−'}{Math.abs(delta)}</span>;
 }
 
-export default function StoryCampaign({ bank, onExit, experience, storyAttemptedCaseIds, onAttempt }: Props) {
+export default function StoryCampaign({ userId, bank, onExit, experience, storyAttemptedCaseIds, onAttempt }: Props) {
   const [progress, setProgress] = useState<StoryProgress | null>(null);
   const [chapter, setChapter] = useState(0);
   const [stage, setStage] = useState<Stage>('campaign');
@@ -91,11 +91,11 @@ export default function StoryCampaign({ bank, onExit, experience, storyAttempted
   const [chapterCaseCount, setChapterCaseCount] = useState(0);
   const [saving, setSaving] = useState(false);
   const caseStartedAt = useRef(0);
-  useEffect(() => { const timer = window.setTimeout(() => setProgress(loadStoryProgress()), 0); return () => window.clearTimeout(timer); }, []);
+  useEffect(() => { const timer = window.setTimeout(() => setProgress(loadStoryProgress(userId)), 0); return () => window.clearTimeout(timer); }, [userId]);
   const selected = queue[index];
   const selectedDecision = selected && choice !== null ? (choice ? selected.answer : !selected.answer) : null;
   const available = useMemo(() => bank.filter((item) => storyChapters.some((entry) => entry.law && entry.law === item.law)), [bank]);
-  function persist(next: StoryProgress) { setProgress(next); saveStoryProgress(next); }
+  function persist(next: StoryProgress) { setProgress(next); saveStoryProgress(next, userId); }
   function startChapter(ch: number) {
     if (!progress || ch > progress.unlockedThrough) return;
     const attempted = new Set(storyAttemptedCaseIds);

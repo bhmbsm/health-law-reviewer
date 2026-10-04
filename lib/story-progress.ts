@@ -1,13 +1,13 @@
 import { initialStoryStats, type StoryStats } from './story';
 
 export type StoryProgress = { unlockedThrough: number; completed: number[]; stats: StoryStats };
-const KEY = 'health-law-reviewer-story-v1';
+const storageKey = (userId: string | null) => `health-law-reviewer-story-v2:${userId || 'guest'}`;
 const empty: StoryProgress = { unlockedThrough: 0, completed: [], stats: initialStoryStats };
 
 // Keep persistence behind these functions so the backend can be replaced centrally later.
-export function loadStoryProgress(): StoryProgress {
+export function loadStoryProgress(userId: string | null = null): StoryProgress {
   try {
-    const saved = localStorage.getItem(KEY);
+    const saved = localStorage.getItem(storageKey(userId));
     if (!saved) return empty;
     const value = JSON.parse(saved) as Partial<StoryProgress>;
     const completed = Array.isArray(value.completed)
@@ -28,6 +28,6 @@ export function loadStoryProgress(): StoryProgress {
   } catch { return empty; }
 }
 
-export function saveStoryProgress(progress: StoryProgress): void {
-  localStorage.setItem(KEY, JSON.stringify(progress));
+export function saveStoryProgress(progress: StoryProgress, userId: string | null = null): void {
+  localStorage.setItem(storageKey(userId), JSON.stringify(progress));
 }

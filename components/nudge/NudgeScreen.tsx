@@ -26,7 +26,7 @@ export default function NudgeScreen({ groupCode, completedToday, onGoToday, comp
     if (!completedToday || !today) return;
     const sentToday = sendMockNudge(friendId, today);
     setDashboard((current) => current ? { ...current, sentToday } : current);
-    setNotice('Nudge를 보냈습니다.');
+    setNotice('예시 체험을 완료했습니다. 실제 친구에게 알림이 발송되지는 않습니다.');
   }
 
   if (!dashboard) return compact ? null : <section className="panel" aria-busy="true">Nudge 정보를 불러오는 중…</section>;

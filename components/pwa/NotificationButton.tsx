@@ -61,12 +61,12 @@ export default function NotificationButton({ onShowInstallGuide }: Props) {
     }
     if (permission === 'granted') {
       await savePushSubscription();
-      setMessage('이 사이트의 알림 권한이 허용되어 있습니다.');
+      setMessage('알림 권한은 허용되어 있습니다. 실제 알림 발송 기능은 준비 중입니다.');
       return;
     }
     const next = await Notification.requestPermission();
     setPermission(next);
-    setMessage(next === 'granted' ? '알림 권한을 허용했습니다.' : next === 'denied' ? '알림이 차단되었습니다. 브라우저 설정에서 변경할 수 있습니다.' : '알림 권한 요청을 완료하지 않았습니다.');
+    setMessage(next === 'granted' ? '알림 권한을 허용했습니다. 실제 알림 발송 기능은 준비 중입니다.' : next === 'denied' ? '알림이 차단되었습니다. 브라우저 설정에서 변경할 수 있습니다.' : '알림 권한 요청을 완료하지 않았습니다.');
     if (next === 'granted') await savePushSubscription();
   }
 

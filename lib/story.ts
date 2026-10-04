@@ -1,10 +1,9 @@
-import { cases, type Case } from './cases';
+import type { Case } from './cases';
 
 export type StoryStats = { judgment: number; trust: number };
 export type RankIconKey = 'badge' | 'shield' | 'badgeCheck' | 'shieldCheck' | 'medal' | 'award' | 'star' | 'crown' | 'trophy' | 'gem' | 'landmark' | 'sparkles';
 export type StoryChapter = { title: string; law: string | null; briefing: string; incidentTitle: string; incident: string; rank: string; rankIcon: RankIconKey };
 
-const knownLaws = new Set(cases.map((item) => item.law));
 // 임시 직급명, 팀 확정 필요. 직급명과 아이콘 키는 각 챕터 항목만을 기준으로 표시합니다.
 const campaignDraft = [
   ['첫 심사', '의료법', '새 심사관으로 첫 사건을 맡았습니다. 사실관계와 조문을 차분히 대조하세요.', '접수대의 짧은 휴식', '선임 심사관이 접수대 옆에 차를 내려놓습니다. “잠깐 숨 돌려요.” 대기 중인 민원인은 안내 표지판을 살피며 자기 차례를 기다립니다.', '수습 심사관', 'badge'],
@@ -23,7 +22,7 @@ const campaignDraft = [
 
 export const storyChapters: StoryChapter[] = campaignDraft.map(([title, law, briefing, incidentTitle, incident, rank, rankIcon]) => ({
   title,
-  law: law && knownLaws.has(law) ? law : null,
+  law,
   briefing,
   incidentTitle,
   incident,
