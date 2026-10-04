@@ -138,6 +138,15 @@ export default function StoryCampaign({ bank, onExit, experience, storyAttempted
     }
     finishChapter();
   }
+  function continueAfterIncident() {
+    setIncidentSeen(true);
+    if (index + 1 < queue.length) {
+      setIndex(index + 1);
+      setChoice(null);
+      caseStartedAt.current = Date.now();
+    }
+    setStage('case');
+  }
   function finishChapter() {
     if (!progress) return;
     const completed = [...new Set([...progress.completed, chapter])];
@@ -175,7 +184,7 @@ export default function StoryCampaign({ bank, onExit, experience, storyAttempted
     {stage === 'campaign' && <><p>챕터 상태는 플레이 가능 여부와 문항 준비 여부로 나뉩니다.</p><div className="story-chapters">{storyChapters.map((entry, i) => { const ready = !!entry.law && bank.some((item) => item.law === entry.law); const unlocked = i <= progress.unlockedThrough; const status = !ready ? '🕓 준비 중' : unlocked ? '🔓 플레이 가능' : '🔒 잠김'; const statusClass = !ready ? 'preparing' : unlocked ? 'unlocked' : 'locked'; return <article className={`panel story-chapter ${statusClass}`} key={entry.title}><div className="story-chapter-heading"><small>제{i + 1}장 · {entry.rank}</small><span className={`story-status ${statusClass}`}>{status}</span></div><h2>{entry.title}</h2><p>{ready ? `${entry.law} · ${bank.filter((item) => item.law === entry.law).length}개 문항` : '법령 및 문항 준비 중'}</p><button className="primary" disabled={!ready || !unlocked} onClick={() => startChapter(i)}>{!ready ? '준비 중' : unlocked ? (progress.completed.includes(i) ? '다시 플레이' : '시작') : '이전 챕터 완료 필요'}</button></article>; })}</div><p className="small">현재 출제 가능한 법령: {Array.from(new Set(available.map((item) => item.law))).join(' · ') || '없음'}</p></>}
     {stage === 'briefing' && <article className="panel story-paper"><small>제{chapter + 1}장 · {active.law}</small><h2>{active.title}</h2><p>{active.briefing}</p><p>이번 심사 묶음 {queue.length}개 · 승진까지 {chapterDone} / {chapterTotal}</p><button className="primary" onClick={() => { setStage(queue.length ? 'case' : 'summary'); caseStartedAt.current = Date.now(); }}>{queue.length ? '심사 시작' : '문항 없음 · 결산 보기'}</button></article>}
     {stage === 'case' && selected && <div className={`panel story-case-document ${choice !== null ? 'case-filed' : ''} ${choice === true ? 'case-correct' : choice === false ? 'case-incorrect' : ''}`}><small>{selected.law} · {selected.article} · {index + 1}/{queue.length}</small><h2>{selected.title}</h2><p>{selected.body}</p><ul>{selected.details.map((detail) => <li key={detail}>{detail}</li>)}</ul>{choice !== null && <><div className={`ink-stamp story-ink-stamp ${selectedDecision ? 'ink-green' : 'ink-red'}`} role="img" aria-label={choice ? '정답' : '오답'}>{selectedDecision ? '승인' : '반려'}</div><div className="story-feedback"><strong>{choice ? `정답입니다 · ${selected.answer ? '승인' : '반려'}` : `오답입니다 · 정답은 ${selected.answer ? '승인' : '반려'}`}</strong><p>{selected.explanation}</p><a href={selected.source || lawSearchUrl(selected.law)} target="_blank" rel="noreferrer">법전에서 {selected.law} {selected.article} 확인 ↗</a></div></>}<div className="decision-buttons"><button className="approve" disabled={choice !== null || saving} onClick={() => submit(true)}>승인</button><button className="reject" disabled={choice !== null || saving} onClick={() => submit(false)}>반려</button></div>{saving && <p role="status">심사 기록 저장 중…</p>}{choice !== null && <button className="primary" onClick={nextCase}>{index + 1 < queue.length ? '다음 사례' : incidentSeen ? '결산' : '중간 사건'}</button>}</div>}
-    {stage === 'incident' && <article className="panel story-incident"><small>업무 중 잠시</small><h2>{active.incidentTitle}</h2><p>{active.incident}</p><button className="primary" onClick={() => { setIncidentSeen(true); setStage('case'); }}>사례 계속 심사</button></article>}
+    {stage === 'incident' && <article className="panel story-incident"><small>업무 중 잠시</small><h2>{active.incidentTitle}</h2><p>{active.incident}</p><button className="primary" onClick={continueAfterIncident}>사례 계속 심사</button></article>}
     {stage === 'summary' && <article className="panel story-summary">
       <div className="promotion-document">
         <span className="eyebrow">제{chapter + 1}장 결산</span>
@@ -184,13 +193,14 @@ export default function StoryCampaign({ bank, onExit, experience, storyAttempted
         <div className="promotion-ranks"><span>이전 직급 <b>{chapterStartRank}</b></span><span>발령 직급 <b>{rankEntry.rank}</b></span></div>
         <div className={`promotion-seal ${promoted ? 'is-promotion' : ''}`}>{promoted ? '승진' : '완료'}<small>심사실 인사과</small></div>
       </div>
-      <p>{attemptedThisRun.size ? `이번 심사 ${attemptedThisRun.size}건 중 ${Math.max(0, correctCount)}건 정답` : '출제 가능한 기존 문항이 없습니다.'}</p>
-      <div className="summary-change-cards story-summary-stats">
-        <section className="summary-change-card summary-rank-change"><small>직급</small><strong><RankIcon aria-hidden="true"/><span>{chapterStartRank} → {rankEntry.rank}</span></strong><p>{promoted ? '챕터 클리어 승진' : '직급 변동 없음'}</p></section>
-        <section className="summary-change-card experience-change"><small>공통 EXP</small><strong><CountUp from={chapterStartExperience} to={currentExperience} suffix=" EXP"/></strong><p>{experienceGain > 0 ? '+' : ''}{experienceGain} EXP 변화</p></section>
-        <section className="summary-change-card summary-judgment-change"><small>판단력</small><strong><CountUp from={startJudgment} to={currentJudgment}/></strong><p>{startJudgment} → {currentJudgment} · {judgmentChange > 0 ? '+' : ''}{judgmentChange}</p></section>
-        <section className="summary-change-card trust-change"><small>신뢰도</small><strong><CountUp from={startTrust} to={currentTrust}/></strong><p>{startTrust} → {currentTrust} · {trustChange > 0 ? '+' : ''}{trustChange}</p></section>
-      </div>
+      <section className="performance-sheet" aria-label="근무 평정표">
+        <div className="performance-sheet-heading"><b>근무 평정표</b><span>{attemptedThisRun.size ? `이번 심사 ${attemptedThisRun.size}건 중 ${Math.max(0, correctCount)}건 정답` : '출제 가능한 기존 문항이 없습니다.'}</span></div>
+        <div className="performance-sheet-row">
+          <div className="performance-item"><span><Zap aria-hidden="true"/> EXP</span><strong><CountUp from={chapterStartExperience} to={currentExperience}/><em className={`performance-delta ${experienceGain > 0 ? 'increase' : experienceGain < 0 ? 'decrease' : ''}`}>{experienceGain > 0 ? '+' : ''}{experienceGain}</em></strong></div>
+          <div className="performance-item"><span><Brain aria-hidden="true"/> 판단력</span><strong><CountUp from={startJudgment} to={currentJudgment}/><em className={`performance-delta ${judgmentChange > 0 ? 'increase' : judgmentChange < 0 ? 'decrease' : ''}`}>{judgmentChange > 0 ? '+' : ''}{judgmentChange}</em></strong></div>
+          <div className="performance-item"><span><Handshake aria-hidden="true"/> 신뢰도</span><strong><CountUp from={startTrust} to={currentTrust}/><em className={`performance-delta ${trustChange > 0 ? 'increase' : trustChange < 0 ? 'decrease' : ''}`}>{trustChange > 0 ? '+' : ''}{trustChange}</em></strong></div>
+        </div>
+      </section>
       <p>다음 챕터 잠금 해제</p><button className="primary" onClick={() => setStage('campaign')}>챕터 목록</button>
     </article>}
   </section>;
