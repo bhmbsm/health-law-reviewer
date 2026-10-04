@@ -1,60 +1,28 @@
-export type NudgeFriend = {
-  id: string;
-  nickname: string;
-  groupCode: string;
-  studiedToday: boolean;
-};
-
-export type NudgeRecord = {
-  id: string;
-  senderId: string;
-  senderName: string;
-  recipientId: string;
-  message: string;
-  createdAt: string;
-  kind: 'received' | 'sent';
-};
-
-export type NudgeDashboard = {
-  friends: NudgeFriend[];
-  received: NudgeRecord[];
-  sentToday: string[];
-  isExampleData: true;
-};
+import {supabase} from './supabase';
 
 export const DAILY_STUDY_TARGET = 5;
-const SENT_KEY = 'health-law-reviewer-mock-nudges-v1';
-const mockFriends: Omit<NudgeFriend, 'groupCode'>[] = [
-  { id: 'mock-friend-01', nickname: '민서', studiedToday: false },
-  { id: 'mock-friend-02', nickname: '지훈', studiedToday: true },
-  { id: 'mock-friend-03', nickname: '서연', studiedToday: false },
-  { id: 'mock-friend-04', nickname: '도윤', studiedToday: false },
-];
+export type NudgeFriend = {id:string; nickname:string; solvedToday:number};
+export type NudgeRecord = {id:string; senderName:string; message:string; createdAt:string};
+export type NudgeDashboard = {
+  groupCode:string;
+  completedToday:boolean;
+  friends:NudgeFriend[];
+  received:NudgeRecord[];
+  sentToday:string[];
+};
 
-// TODO: 개발자 A가 이 함수들을 그룹 친구·오늘 학습 현황·Nudge API 호출로 교체합니다.
-export function loadMockNudgeDashboard(groupCode: string, today: string): NudgeDashboard {
-  let sentToday: string[] = [];
-  try {
-    const stored = JSON.parse(localStorage.getItem(SENT_KEY) || '{}') as Record<string, string[]>;
-    sentToday = Array.isArray(stored[today]) ? stored[today] : [];
-  } catch { /* Use an empty temporary send list when local data is invalid. */ }
-
-  const received: NudgeRecord[] = [
-    { id: 'mock-received-01', senderId: 'mock-friend-02', senderName: '지훈', recipientId: 'current-user', message: '오늘 심사도 같이 해요!', createdAt: `${today}T09:00:00+09:00`, kind: 'received' },
-  ];
-  return {
-    friends: groupCode ? mockFriends.map((friend) => ({ ...friend, groupCode })) : [],
-    received,
-    sentToday,
-    isExampleData: true,
-  };
+async function request(method:'GET'|'POST', recipientId?:string, signal?:AbortSignal){
+  if(!supabase)throw Error('로그인 후 이용해 주세요.');
+  const {data,error}=await supabase.auth.getSession();
+  if(error||!data.session)throw Error('로그인 후 이용해 주세요.');
+  const response=await fetch('/api/nudge',{
+    method, signal, cache:'no-store',
+    headers:{Authorization:`Bearer ${data.session.access_token}`,'Content-Type':'application/json'},
+    ...(method==='POST'?{body:JSON.stringify({recipientId})}:{}),
+  });
+  const result=await response.json();
+  if(!response.ok)throw Error(result.error||'친구 알림을 처리하지 못했습니다. 다시 시도해 주세요.');
+  return result;
 }
-
-export function sendMockNudge(friendId: string, today: string): string[] {
-  let stored: Record<string, string[]> = {};
-  try { stored = JSON.parse(localStorage.getItem(SENT_KEY) || '{}') as Record<string, string[]>; } catch { /* Start with empty temporary data. */ }
-  const sentToday = Array.isArray(stored[today]) ? stored[today] : [];
-  if (!sentToday.includes(friendId)) stored[today] = [...sentToday, friendId];
-  localStorage.setItem(SENT_KEY, JSON.stringify(stored));
-  return stored[today];
-}
+export const loadNudgeDashboard=(signal?:AbortSignal):Promise<NudgeDashboard>=>request('GET',undefined,signal);
+export const sendNudge=(recipientId:string):Promise<{sent:number;inbox:boolean}>=>request('POST',recipientId);

@@ -29,6 +29,12 @@ export async function deliver(userId:string, title:string,body:string,url:string
   const db=adminClient();
   const {error:inboxError}=await db.from('in_app_notifications').insert({user_id:userId,title,body,url});
   if(inboxError)throw inboxError;
+  return {sent:await pushToDevices(userId,title,body,url),inbox:true};
+}
+
+// Nudge commits its inbox entry together with its daily send claim.
+export async function pushToDevices(userId:string,title:string,body:string,url:string){
+  const db=adminClient();
   const {data:subscriptions,error}=await db.from('push_subscriptions').select('endpoint,p256dh,auth_secret').eq('user_id',userId);
   if(error)throw error;
   let sent=0;
@@ -40,7 +46,7 @@ export async function deliver(userId:string, title:string,body:string,url:string
       if([404,410].includes((reason as {status?:number}).status||0))await db.from('push_subscriptions').delete().eq('endpoint',row.endpoint).eq('user_id',userId);
     }
   }
-  return {sent,inbox:true};
+  return sent;
 }
 
 export const koreaDate=(date:Date)=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(date);
