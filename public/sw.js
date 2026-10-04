@@ -18,3 +18,16 @@ self.addEventListener('fetch', (event) => {
     return response;
   }).catch(() => caches.match(event.request).then((cached) => cached || caches.match('/'))));
 });
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = new URL('/?screen=today', self.location.origin).href;
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
+    const existing = clients.find((client) => new URL(client.url).origin === self.location.origin);
+    if (existing) {
+      await existing.navigate(target);
+      return existing.focus();
+    }
+    return self.clients.openWindow(target);
+  }));
+});
