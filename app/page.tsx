@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {BookOpen,LayoutDashboard,Waypoints,Files,RotateCcw,ChartNoAxesCombined,Library,Flame,ArrowRight,Check,X,ShieldCheck,ChevronRight,Download,Upload,CheckCircle2,Stamp,Scale,ArrowLeft,Share2,Heart,Target,Smartphone,UserRound} from 'lucide-react';
+import {BookOpen,LayoutDashboard,Waypoints,Files,RotateCcw,ChartNoAxesCombined,Library,Flame,ArrowRight,Check,X,ShieldCheck,ChevronRight,Download,Upload,CheckCircle2,Stamp,Scale,ArrowLeft,Share2,Heart,Target,UserRound} from 'lucide-react';
 import {cases as initialCases,chapters,type Case} from '../lib/cases';
 import {isRuleBank,makeRuleCases,parseRuleBank,type RuleBank} from '../lib/rule-bank';
 import {emergencyRuleBank} from '../lib/emergency-rule-bank';
@@ -47,7 +47,7 @@ const current=session?.queue[session.index];const currentDecision=current&&resul
 useEffect(()=>{const bridge=(window as any).AndroidWidget;if(bridge?.updateWidget){const last=attempts.length?day(attempts[attempts.length-1].created):'';bridge.updateWidget(JSON.stringify({nickname:member?.nickname||'심사관',streak,todaySolved:todayAttempts.length,lastStudyDate:last}));}},[attempts,member,streak,todayAttempts.length]);
 function go(t:string){if(busy)return;setTab(t);setSession(null);setFinished(false);setError('');setFilter('전체');window.scrollTo({top:0,behavior:'smooth'});}
 function goToday(){setTab('home');setSession(null);setFinished(false);window.history.replaceState(null,'','/?screen=today');window.scrollTo({top:0,behavior:'smooth'});}
-useEffect(()=>{const openNudge=()=>go('nudge');window.addEventListener('open-nudge-screen',openNudge);return()=>window.removeEventListener('open-nudge-screen',openNudge);},[]);
+useEffect(()=>{const openNudge=()=>{if(lock.current)return;setTab('nudge');setSession(null);setFinished(false);setError('');setFilter('전체');window.scrollTo({top:0,behavior:'smooth'});};window.addEventListener('open-nudge-screen',openNudge);return()=>window.removeEventListener('open-nudge-screen',openNudge);},[]);
 useEffect(()=>{if(new URLSearchParams(window.location.search).get('screen')==='today'){const timer=window.setTimeout(()=>{setTab('home');setSession(null);setFinished(false);document.getElementById('today-learning')?.scrollIntoView({behavior:'smooth'});},0);return()=>window.clearTimeout(timer);}},[]);
 async function installApp(){if(!installPrompt){setToast('브라우저 메뉴에서 “홈 화면에 추가”를 선택하면 앱처럼 설치할 수 있습니다.');return;}installPrompt.prompt();await installPrompt.userChoice;setInstallPrompt(null);}
 function begin(queue:Case[],mode:string){if(!ready||!queue.length)return;setSession({queue,index:0,mode,right:0});setResult(null);setHint(false);setUsedHint(false);setFinished(false);startTime.current=Date.now();requestId.current=createUUID();}

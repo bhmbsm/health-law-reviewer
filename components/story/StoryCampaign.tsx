@@ -9,6 +9,7 @@ type Props = { bank: Case[]; onExit: () => void; experience: number; storyAttemp
 type Stage = 'campaign' | 'briefing' | 'case' | 'incident' | 'summary';
 
 const rankIcons = { badge: Badge, shield: Shield, badgeCheck: BadgeCheck, shieldCheck: ShieldCheck, medal: Medal, award: Award, star: Star, crown: Crown, trophy: Trophy, gem: Gem, landmark: Landmark, sparkles: Sparkles };
+const currentTimestamp = () => Date.now();
 
 function safeNumber(value: unknown, fallback = 0): number {
   const number = Number(value);
@@ -89,7 +90,7 @@ export default function StoryCampaign({ bank, onExit, experience, storyAttempted
   const [attemptedThisRun, setAttemptedThisRun] = useState<Set<string>>(new Set());
   const [chapterCaseCount, setChapterCaseCount] = useState(0);
   const [saving, setSaving] = useState(false);
-  const caseStartedAt = useRef(Date.now());
+  const caseStartedAt = useRef(0);
   useEffect(() => { const timer = window.setTimeout(() => setProgress(loadStoryProgress()), 0); return () => window.clearTimeout(timer); }, []);
   const selected = queue[index];
   const selectedDecision = selected && choice !== null ? (choice ? selected.answer : !selected.answer) : null;
@@ -110,7 +111,7 @@ export default function StoryCampaign({ bank, onExit, experience, storyAttempted
     setAttemptedThisRun(new Set());
     setChapterCaseCount(bank.filter((item) => item.law === storyChapters[ch].law).length);
     setChapter(ch); setQueue(cases); setIndex(0); setCorrectCount(0); setChoice(null); setIncidentSeen(false);
-    caseStartedAt.current = Date.now();
+    caseStartedAt.current = currentTimestamp();
     setStage('briefing');
   }
   async function submit(answer: boolean) {
@@ -130,11 +131,11 @@ export default function StoryCampaign({ bank, onExit, experience, storyAttempted
   function nextCase() {
     if (saving) return;
     if (!incidentSeen && queue.length > 1 && index + 1 >= Math.ceil(queue.length / 2)) { setStage('incident'); return; }
-    if (index + 1 < queue.length) { setIndex((n) => n + 1); setChoice(null); caseStartedAt.current = Date.now(); return; }
+    if (index + 1 < queue.length) { setIndex((n) => n + 1); setChoice(null); caseStartedAt.current = currentTimestamp(); return; }
     const law = storyChapters[chapter].law;
     const pending = bank.filter((item) => item.law === law && !attemptedIds.has(item.id));
     if (pending.length) {
-      setQueue(randomChapterCases(bank, chapter, attemptedIds)); setIndex(0); setChoice(null); setStage('briefing'); caseStartedAt.current = Date.now(); return;
+      setQueue(randomChapterCases(bank, chapter, attemptedIds)); setIndex(0); setChoice(null); setStage('briefing'); caseStartedAt.current = currentTimestamp(); return;
     }
     finishChapter();
   }
@@ -143,7 +144,7 @@ export default function StoryCampaign({ bank, onExit, experience, storyAttempted
     if (index + 1 < queue.length) {
       setIndex(index + 1);
       setChoice(null);
-      caseStartedAt.current = Date.now();
+      caseStartedAt.current = currentTimestamp();
     }
     setStage('case');
   }
@@ -182,7 +183,7 @@ export default function StoryCampaign({ bank, onExit, experience, storyAttempted
       <div className="chapter-promotion-progress"><small>승진까지 <b>{chapterDone} / {chapterTotal}</b></small><AnimatedBar value={chapterProgress}/></div>
     </div>
     {stage === 'campaign' && <><p>챕터 상태는 플레이 가능 여부와 문항 준비 여부로 나뉩니다.</p><div className="story-chapters">{storyChapters.map((entry, i) => { const ready = !!entry.law && bank.some((item) => item.law === entry.law); const unlocked = i <= progress.unlockedThrough; const status = !ready ? '🕓 준비 중' : unlocked ? '🔓 플레이 가능' : '🔒 잠김'; const statusClass = !ready ? 'preparing' : unlocked ? 'unlocked' : 'locked'; return <article className={`panel story-chapter ${statusClass}`} key={entry.title}><div className="story-chapter-heading"><small>제{i + 1}장 · {entry.rank}</small><span className={`story-status ${statusClass}`}>{status}</span></div><h2>{entry.title}</h2><p>{ready ? `${entry.law} · ${bank.filter((item) => item.law === entry.law).length}개 문항` : '법령 및 문항 준비 중'}</p><button className="primary" disabled={!ready || !unlocked} onClick={() => startChapter(i)}>{!ready ? '준비 중' : unlocked ? (progress.completed.includes(i) ? '다시 플레이' : '시작') : '이전 챕터 완료 필요'}</button></article>; })}</div><p className="small">현재 출제 가능한 법령: {Array.from(new Set(available.map((item) => item.law))).join(' · ') || '없음'}</p></>}
-    {stage === 'briefing' && <article className="panel story-paper"><small>제{chapter + 1}장 · {active.law}</small><h2>{active.title}</h2><p>{active.briefing}</p><p>이번 심사 묶음 {queue.length}개 · 승진까지 {chapterDone} / {chapterTotal}</p><button className="primary" onClick={() => { setStage(queue.length ? 'case' : 'summary'); caseStartedAt.current = Date.now(); }}>{queue.length ? '심사 시작' : '문항 없음 · 결산 보기'}</button></article>}
+    {stage === 'briefing' && <article className="panel story-paper"><small>제{chapter + 1}장 · {active.law}</small><h2>{active.title}</h2><p>{active.briefing}</p><p>이번 심사 묶음 {queue.length}개 · 승진까지 {chapterDone} / {chapterTotal}</p><button className="primary" onClick={() => { setStage(queue.length ? 'case' : 'summary'); caseStartedAt.current = currentTimestamp(); }}>{queue.length ? '심사 시작' : '문항 없음 · 결산 보기'}</button></article>}
     {stage === 'case' && selected && <div className={`panel story-case-document ${choice !== null ? 'case-filed' : ''} ${choice === true ? 'case-correct' : choice === false ? 'case-incorrect' : ''}`}><small>{selected.law} · {selected.article} · {index + 1}/{queue.length}</small><h2>{selected.title}</h2><p>{selected.body}</p><ul>{selected.details.map((detail) => <li key={detail}>{detail}</li>)}</ul>{choice !== null && <><div className={`ink-stamp story-ink-stamp ${selectedDecision ? 'ink-green' : 'ink-red'}`} role="img" aria-label={choice ? '정답' : '오답'}>{selectedDecision ? '승인' : '반려'}</div><div className="story-feedback"><strong>{choice ? `정답입니다 · ${selected.answer ? '승인' : '반려'}` : `오답입니다 · 정답은 ${selected.answer ? '승인' : '반려'}`}</strong><p>{selected.explanation}</p><a href={selected.source || lawSearchUrl(selected.law)} target="_blank" rel="noreferrer">법전에서 {selected.law} {selected.article} 확인 ↗</a></div></>}<div className="decision-buttons"><button className="approve" disabled={choice !== null || saving} onClick={() => submit(true)}>승인</button><button className="reject" disabled={choice !== null || saving} onClick={() => submit(false)}>반려</button></div>{saving && <p role="status">심사 기록 저장 중…</p>}{choice !== null && <button className="primary" onClick={nextCase}>{index + 1 < queue.length ? '다음 사례' : incidentSeen ? '결산' : '중간 사건'}</button>}</div>}
     {stage === 'incident' && <article className="panel story-incident"><small>업무 중 잠시</small><h2>{active.incidentTitle}</h2><p>{active.incident}</p><button className="primary" onClick={continueAfterIncident}>사례 계속 심사</button></article>}
     {stage === 'summary' && <article className="panel story-summary">
