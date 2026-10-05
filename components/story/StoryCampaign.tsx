@@ -2,7 +2,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Award, Badge, BadgeCheck, Brain, Crown, Gem, Handshake, Landmark, Medal, Shield, ShieldCheck, Sparkles, Star, Trophy, Zap } from 'lucide-react';
 import type { Case } from '../../lib/cases';
-import { applyStoryResult, initialStoryStats, lawSearchUrl, randomChapterCases, storyChapters, type StoryStats } from '../../lib/story';
+import StoryCaseDocument from './StoryCaseDocument';
+import { applyStoryResult, initialStoryStats, randomChapterCases, storyChapters, type StoryStats } from '../../lib/story';
 import { loadStoryProgress, saveStoryProgress, type StoryProgress } from '../../lib/story-progress';
 
 type Props = { userId: string | null; bank: Case[]; onExit: () => void; experience: number; storyAttemptedCaseIds: string[]; onAttempt: (item: Case, choice: boolean, correct: boolean, duration: number) => Promise<void> };
@@ -80,6 +81,7 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
   const [index, setIndex] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
   const [choice, setChoice] = useState<boolean | null>(null);
+  const [answeredCaseId, setAnsweredCaseId] = useState<string | null>(null);
   const [incidentSeen, setIncidentSeen] = useState(false);
   const [chapterStartStats, setChapterStartStats] = useState<StoryStats>(initialStoryStats);
   const safeExperience = Math.max(0, safeNumber(experience));
@@ -93,7 +95,7 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
   const caseStartedAt = useRef(0);
   useEffect(() => { const timer = window.setTimeout(() => setProgress(loadStoryProgress(userId)), 0); return () => window.clearTimeout(timer); }, [userId]);
   const selected = queue[index];
-  const selectedDecision = selected && choice !== null ? (choice ? selected.answer : !selected.answer) : null;
+  const visibleResult = selected && answeredCaseId === selected.id ? choice : null;
   const available = useMemo(() => bank.filter((item) => storyChapters.some((entry) => entry.law && entry.law === item.law)), [bank]);
   function persist(next: StoryProgress) { setProgress(next); saveStoryProgress(next, userId); }
   function startChapter(ch: number) {
@@ -110,7 +112,7 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
     setAttemptedIds(attempted);
     setAttemptedThisRun(new Set());
     setChapterCaseCount(bank.filter((item) => item.law === storyChapters[ch].law).length);
-    setChapter(ch); setQueue(cases); setIndex(0); setCorrectCount(0); setChoice(null); setIncidentSeen(false);
+    setChapter(ch); setQueue(cases); setIndex(0); setCorrectCount(0); setChoice(null); setAnsweredCaseId(null); setIncidentSeen(false);
     caseStartedAt.current = currentTimestamp();
     setStage('briefing');
   }
@@ -120,6 +122,7 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
     setSaving(true);
     try {
       await onAttempt(selected, answer, correct, Math.floor((Date.now() - caseStartedAt.current) / 1000));
+      setAnsweredCaseId(selected.id);
       setChoice(correct);
       if (correct) setCorrectCount((n) => n + 1);
       setAttemptedIds((old) => new Set([...old, selected.id]));
@@ -131,11 +134,11 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
   function nextCase() {
     if (saving) return;
     if (!incidentSeen && queue.length > 1 && index + 1 >= Math.ceil(queue.length / 2)) { setStage('incident'); return; }
-    if (index + 1 < queue.length) { setIndex((n) => n + 1); setChoice(null); caseStartedAt.current = currentTimestamp(); return; }
+    if (index + 1 < queue.length) { setIndex((n) => n + 1); setChoice(null); setAnsweredCaseId(null); caseStartedAt.current = currentTimestamp(); return; }
     const law = storyChapters[chapter].law;
     const pending = bank.filter((item) => item.law === law && !attemptedIds.has(item.id));
     if (pending.length) {
-      setQueue(randomChapterCases(bank, chapter, attemptedIds)); setIndex(0); setChoice(null); setStage('briefing'); caseStartedAt.current = currentTimestamp(); return;
+      setQueue(randomChapterCases(bank, chapter, attemptedIds)); setIndex(0); setChoice(null); setAnsweredCaseId(null); setStage('briefing'); caseStartedAt.current = currentTimestamp(); return;
     }
     finishChapter();
   }
@@ -143,7 +146,7 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
     setIncidentSeen(true);
     if (index + 1 < queue.length) {
       setIndex(index + 1);
-      setChoice(null);
+      setChoice(null); setAnsweredCaseId(null);
       caseStartedAt.current = currentTimestamp();
     }
     setStage('case');
@@ -184,7 +187,7 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
     </div>
     {stage === 'campaign' && <><p>챕터 상태는 플레이 가능 여부와 문항 준비 여부로 나뉩니다.</p><div className="story-chapters">{storyChapters.map((entry, i) => { const ready = !!entry.law && bank.some((item) => item.law === entry.law); const unlocked = i <= progress.unlockedThrough; const status = !ready ? '🕓 준비 중' : unlocked ? '🔓 플레이 가능' : '🔒 잠김'; const statusClass = !ready ? 'preparing' : unlocked ? 'unlocked' : 'locked'; return <article className={`panel story-chapter ${statusClass}`} key={entry.title}><div className="story-chapter-heading"><small>제{i + 1}장 · {entry.rank}</small><span className={`story-status ${statusClass}`}>{status}</span></div><h2>{entry.title}</h2><p>{ready ? `${entry.law} · ${bank.filter((item) => item.law === entry.law).length}개 문항` : '법령 및 문항 준비 중'}</p><button className="primary" disabled={!ready || !unlocked} onClick={() => startChapter(i)}>{!ready ? '준비 중' : unlocked ? (progress.completed.includes(i) ? '다시 플레이' : '시작') : '이전 챕터 완료 필요'}</button></article>; })}</div><p className="small">현재 출제 가능한 법령: {Array.from(new Set(available.map((item) => item.law))).join(' · ') || '없음'}</p></>}
     {stage === 'briefing' && <article className="panel story-paper"><small>제{chapter + 1}장 · {active.law}</small><h2>{active.title}</h2><p>{active.briefing}</p><p>이번 심사 묶음 {queue.length}개 · 승진까지 {chapterDone} / {chapterTotal}</p><button className="primary" onClick={() => { setStage(queue.length ? 'case' : 'summary'); caseStartedAt.current = currentTimestamp(); }}>{queue.length ? '심사 시작' : '문항 없음 · 결산 보기'}</button></article>}
-    {stage === 'case' && selected && <div className={`panel story-case-document ${choice !== null ? 'case-filed' : ''} ${choice === true ? 'case-correct' : choice === false ? 'case-incorrect' : ''}`}><small>{selected.law} · {selected.article} · {index + 1}/{queue.length}</small><h2>{selected.title}</h2><p>{selected.body}</p><ul>{selected.details.map((detail) => <li key={detail}>{detail}</li>)}</ul>{choice !== null && <><div className={`ink-stamp story-ink-stamp ${selectedDecision ? 'ink-green' : 'ink-red'}`} role="img" aria-label={choice ? '정답' : '오답'}>{selectedDecision ? '승인' : '반려'}</div><div className="story-feedback"><strong>{choice ? `정답입니다 · ${selected.answer ? '승인' : '반려'}` : `오답입니다 · 정답은 ${selected.answer ? '승인' : '반려'}`}</strong><p>{selected.explanation}</p><a href={selected.source || lawSearchUrl(selected.law)} target="_blank" rel="noreferrer">법전에서 {selected.law} {selected.article} 확인 ↗</a></div></>}<div className="decision-buttons"><button className="approve" disabled={choice !== null || saving} onClick={() => submit(true)}>승인</button><button className="reject" disabled={choice !== null || saving} onClick={() => submit(false)}>반려</button></div>{saving && <p role="status">심사 기록 저장 중…</p>}{choice !== null && <button className="primary" onClick={nextCase}>{index + 1 < queue.length ? '다음 사례' : incidentSeen ? '결산' : '중간 사건'}</button>}</div>}
+    {stage === 'case' && selected && <StoryCaseDocument selected={selected} index={index} total={queue.length} result={visibleResult} saving={saving} onAnswer={submit} onNext={nextCase} nextLabel={index + 1 < queue.length ? '다음 사례' : incidentSeen ? '결산' : '중간 사건'}/>}
     {stage === 'incident' && <article className="panel story-incident"><small>업무 중 잠시</small><h2>{active.incidentTitle}</h2><p>{active.incident}</p><button className="primary" onClick={continueAfterIncident}>사례 계속 심사</button></article>}
     {stage === 'summary' && <article className="panel story-summary">
       <div className="promotion-document">
