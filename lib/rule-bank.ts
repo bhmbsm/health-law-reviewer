@@ -13,7 +13,14 @@ const sheetRows=(workbook:XLSX.WorkBook,name:string):Row[]=>{
 };
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const variants=(base:Record<string,unknown>,field:string,values:string[])=>values.length?values.slice(0,20).map(value=>({...base,[field]:value})):[base];
-const materializeFacts=(source:Record<string,unknown>|undefined):Record<string,unknown>=>Object.fromEntries(Object.entries(source||{}).map(([key,value])=>{
+const staffToken=(value:unknown)=>typeof value==='string'?value.match(/^STAFF_MIN:(inpatients):(outpatients):(60|120):(-1|0|1)$/):null;
+export function calculateStaffMinimum(inpatients:number,outpatients:number,divisor:60|120):number{
+  if(![inpatients,outpatients].every(n=>Number.isInteger(n)&&n>=1&&n<=1000)||![60,120].includes(divisor))throw Error('의료인 정원 계산값이 올바르지 않습니다.');
+  // Integer numerator avoids floating-point errors at exact staffing boundaries.
+  return Math.ceil((3*inpatients+outpatients)/divisor);
+}
+const materializeFacts=(source:Record<string,unknown>|undefined):Record<string,unknown>=>{
+const result:Record<string,unknown>=Object.fromEntries(Object.entries(source||{}).map(([key,value])=>{
   if(typeof value!=='string') return [key,value];
   const match=value.match(/^RAND_INT:(\d+):(\d+):(\d+)$/);
   if(!match) return [key,value];
@@ -21,12 +28,26 @@ const materializeFacts=(source:Record<string,unknown>|undefined):Record<string,u
   const count=Math.floor((max-min)/step);
   return [key,String(min+Math.floor(Math.random()*(count+1))*step)];
 }));
+for(const [key,value] of Object.entries(result)){
+  const token=staffToken(value);
+  if(typeof value==='string'&&value.startsWith('STAFF_MIN:')&&!token)throw Error('의료인 정원 계산 규칙이 올바르지 않습니다.');
+  if(!token)continue;
+  const minimum=calculateStaffMinimum(Number(result[token[1]]),Number(result[token[2]]),Number(token[3]) as 60|120);
+  const offset=Number(token[4]);
+  // A natural-number distractor must never be zero or equal to the minimum.
+  result[key]=String(minimum===1&&offset===-1?minimum+1:minimum+offset);
+}
+return result;
+};
 // 법전 원문은 인위적으로 쪼개지 않는다. 날짜·호수까지 끊기면 읽기 어려워진다.
 const formatLawText=(value:string)=>value.replace(/\r\n/g,'\n').trim();
 const displayValue=(value:unknown)=>Array.isArray(value)?value.join(', '):String(value);
 const topicParticle=(word:unknown)=>{const normalized=text(word);const code=normalized.charCodeAt(normalized.length-1);return code>=0xac00&&code<=0xd7a3&&(code-0xac00)%28!==0?'은':'는';};
 const factSentence=(key:string,value:unknown,label:string)=>{
   const shown=displayValue(value);
+  if(key==='inpatients') return `연평균 1일 입원환자는 ${shown}명입니다.`;
+  if(key==='outpatients') return `연평균 1일 외래환자는 ${shown}명입니다.`;
+  if(key==='staff_minimum') return `최소 필요 한의사 수를 ${shown}명으로 계산했습니다.`;
   if(key==='bed_count') return `개설 예정 병상은 ${shown}병상입니다.`;
   if(key==='departments') return `설치 예정 진료과목은 ${shown}입니다.`;
   if(key==='department_count') return `설치 예정 진료과목은 모두 ${shown}개입니다.`;
@@ -56,6 +77,12 @@ const caseExplanation=(rule:Rule,selected:Record<string,unknown>,approved:boolea
   const field=text(rule.changedField)||(rule.approveFacts.length&&rule.rejectFacts.length&&differences.length===1?differences[0]:'');
   if(!field)return `${approved?'승인':'반려'}: ${text(rule.note)||'제출된 사실과 법령 원문의 판단 기준을 확인하세요.'}`;
   const label=rule.factLabels?.[field]||field;
+  const calculation=staffToken(pass[field]);
+  if(calculation){
+    const inpatients=Number(selected[calculation[1]]),outpatients=Number(selected[calculation[2]]),divisor=Number(calculation[3]) as 60|120;
+    const minimum=calculateStaffMinimum(inpatients,outpatients,divisor);
+    return `${approved?'승인':'반려'}: 입원환자 ${inpatients}명 ÷ ${divisor/3} + 외래환자 ${outpatients}명 ÷ ${divisor}의 합을 마지막에 올림하면 최소 ${minimum}명입니다. 제시된 ${selected[field]}명은 ${approved?'정확한 최소 인원입니다.':'최소 인원 계산과 다릅니다. 더 많이 배치할 수 있는지와 최소 인원 계산은 구분해야 합니다.'}`;
+  }
   const stated=factSentence(field,selected[field],label);
   if(approved) return `승인: ${stated} 법정 기준에 맞습니다.`;
   const standard=factSentence(field,rule.approveFacts[0]?.[field],label);
@@ -97,6 +124,12 @@ export async function parseRuleBank(file:File):Promise<RuleBank>{
 export const isRuleBank=(value:unknown):value is RuleBank=>!!value&&typeof value==='object'&&(value as RuleBank).kind==='rule-bank'&&Array.isArray((value as RuleBank).rules);
 export function makeRuleCase(bank:RuleBank,rule:Rule,approved:boolean,index=0):Case{
   const selected=materializeFacts((approved?rule.approveFacts:rule.rejectFacts)[index]);
-  return {id:`${rule.id}:${approved?'approve':'reject'}:${index}`,law:rule.law,article:rule.article,title:rule.title,sender:'보건법규 심사 접수실',body:caseBody(rule,approved),details:facts(selected,rule.factLabels,rule.factOrder),answer:approved,explanation:caseExplanation(rule,selected,approved),rule:rule.lawText||rule.article,chapter:0,difficulty:rule.difficulty==='쉬움'?'기초':rule.difficulty==='어려움'?'심화':'응용',source:rule.source,origin:`자동출제 규칙 · ${bank.name}`};
+  const item:Case={id:`${rule.id}:${approved?'approve':'reject'}:${index}`,law:rule.law,article:rule.article,title:rule.title,sender:'보건법규 심사 접수실',body:caseBody(rule,approved),details:facts(selected,rule.factLabels,rule.factOrder),answer:approved,explanation:caseExplanation(rule,selected,approved),rule:rule.lawText||rule.article,chapter:0,difficulty:rule.difficulty==='쉬움'?'기초':rule.difficulty==='어려움'?'심화':'응용',source:rule.source,origin:`자동출제 규칙 · ${bank.name}`};
+  return staffToken(rule.approveFacts[0]?.[rule.changedField])?Object.assign(item,{ruleGeneration:{name:bank.name,rule,index}}):item;
+}
+// Keep the generated question stable while answering, then redraw on a new session.
+export function refreshRuleCase(item:Case):Case{
+  const generation=(item as Case&{ruleGeneration?:{name:string;rule:Rule;index:number}}).ruleGeneration;
+  return generation?makeRuleCase({name:generation.name} as RuleBank,generation.rule,item.answer,generation.index):item;
 }
 export function makeRuleCases(banks:RuleBank[]):Case[]{return banks.flatMap(bank=>bank.rules.flatMap(rule=>[...rule.approveFacts.map((_,index)=>makeRuleCase(bank,rule,true,index)),...rule.rejectFacts.map((_,index)=>makeRuleCase(bank,rule,false,index))]));}
