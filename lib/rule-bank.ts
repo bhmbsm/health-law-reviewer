@@ -24,7 +24,7 @@ const materializeFacts=(source:Record<string,unknown>|undefined):Record<string,u
 // 법전 원문은 인위적으로 쪼개지 않는다. 날짜·호수까지 끊기면 읽기 어려워진다.
 const formatLawText=(value:string)=>value.replace(/\r\n/g,'\n').trim();
 const displayValue=(value:unknown)=>Array.isArray(value)?value.join(', '):String(value);
-const topicParticle=(word:string)=>{const code=word.charCodeAt(word.length-1);return code>=0xac00&&code<=0xd7a3&&(code-0xac00)%28!==0?'은':'는';};
+const topicParticle=(word:unknown)=>{const normalized=text(word);const code=normalized.charCodeAt(normalized.length-1);return code>=0xac00&&code<=0xd7a3&&(code-0xac00)%28!==0?'은':'는';};
 const factSentence=(key:string,value:unknown,label:string)=>{
   const shown=displayValue(value);
   if(key==='bed_count') return `개설 예정 병상은 ${shown}병상입니다.`;
@@ -50,7 +50,12 @@ const factSentence=(key:string,value:unknown,label:string)=>{
 const facts=(value:Record<string,unknown>,labels:Record<string,string>={},order:string[]=[])=>Object.entries(value).sort(([a],[b])=>{const ai=order.indexOf(a),bi=order.indexOf(b);return (ai<0?Number.MAX_SAFE_INTEGER:ai)-(bi<0?Number.MAX_SAFE_INTEGER:bi);}).map(([key,item])=>factSentence(key,item,labels[key]||key));
 const caseBody=(rule:Rule,approved:boolean)=>approved&&rule.approveBody?rule.approveBody:!approved&&rule.rejectBody?rule.rejectBody:rule.scenario?`${rule.scenario} 이 신청을 승인할 수 있는지 판단하세요.`:'제출된 신청 내용을 검토해 승인 또는 반려를 결정하세요.';
 const caseExplanation=(rule:Rule,selected:Record<string,unknown>,approved:boolean)=>{
-  const field=rule.changedField,label=rule.factLabels[field]||field;
+  // Older stored banks predate changedField. Recover it only when one fact differs.
+  const pass=rule.approveFacts[0]||{},reject=rule.rejectFacts[0]||{};
+  const differences=Object.keys({...pass,...reject}).filter(key=>!same(pass[key],reject[key]));
+  const field=text(rule.changedField)||(rule.approveFacts.length&&rule.rejectFacts.length&&differences.length===1?differences[0]:'');
+  if(!field)return `${approved?'승인':'반려'}: ${text(rule.note)||'제출된 사실과 법령 원문의 판단 기준을 확인하세요.'}`;
+  const label=rule.factLabels?.[field]||field;
   const stated=factSentence(field,selected[field],label);
   if(approved) return `승인: ${stated} 법정 기준에 맞습니다.`;
   const standard=factSentence(field,rule.approveFacts[0]?.[field],label);
