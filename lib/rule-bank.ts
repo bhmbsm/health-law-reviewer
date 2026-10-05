@@ -14,6 +14,11 @@ const sheetRows=(workbook:XLSX.WorkBook,name:string):Row[]=>{
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const variants=(base:Record<string,unknown>,field:string,values:string[])=>values.length?values.slice(0,20).map(value=>({...base,[field]:value})):[base];
 const staffToken=(value:unknown)=>typeof value==='string'?value.match(/^STAFF_MIN:(inpatients):(outpatients):(60|120):(-1|0|1)$/):null;
+const dutyToken=(value:unknown)=>typeof value==='string'?value.match(/^DUTY_MIN:(inpatients):(200|300):(0|WRONG)$/):null;
+export function calculateDutyMinimum(inpatients:number,divisor:200|300):number{
+  if(!Number.isInteger(inpatients)||inpatients<10||inpatients>1000||inpatients%10!==0||![200,300].includes(divisor))throw Error('당직의료인 계산값이 올바르지 않습니다.');
+  return Math.ceil(inpatients/divisor);
+}
 export function calculateStaffMinimum(inpatients:number,outpatients:number,divisor:60|120):number{
   if(![inpatients,outpatients].every(n=>Number.isInteger(n)&&n>=1&&n<=1000)||![60,120].includes(divisor))throw Error('의료인 정원 계산값이 올바르지 않습니다.');
   // Integer numerator avoids floating-point errors at exact staffing boundaries.
@@ -29,6 +34,14 @@ const result:Record<string,unknown>=Object.fromEntries(Object.entries(source||{}
   return [key,String(min+Math.floor(Math.random()*(count+1))*step)];
 }));
 for(const [key,value] of Object.entries(result)){
+  const duty=dutyToken(value);
+  if(typeof value==='string'&&value.startsWith('DUTY_MIN:')&&!duty)throw Error('당직의료인 계산 규칙이 올바르지 않습니다.');
+  if(duty){
+    const minimum=calculateDutyMinimum(Number(result[duty[1]]),Number(duty[2]) as 200|300);
+    const draw=1+Math.floor(Math.random()*9);
+    result[key]=String(duty[3]==='0'?minimum:draw>=minimum?draw+1:draw);
+    continue;
+  }
   const token=staffToken(value);
   if(typeof value==='string'&&value.startsWith('STAFF_MIN:')&&!token)throw Error('의료인 정원 계산 규칙이 올바르지 않습니다.');
   if(!token)continue;
@@ -45,9 +58,11 @@ const displayValue=(value:unknown)=>Array.isArray(value)?value.join(', '):String
 const topicParticle=(word:unknown)=>{const normalized=text(word);const code=normalized.charCodeAt(normalized.length-1);return code>=0xac00&&code<=0xd7a3&&(code-0xac00)%28!==0?'은':'는';};
 const factSentence=(key:string,value:unknown,label:string)=>{
   const shown=displayValue(value);
-  if(key==='inpatients') return `연평균 1일 입원환자는 ${shown}명입니다.`;
+  if(key==='duty_inpatients') return `현재 입원환자는 ${shown}명입니다.`;
+  if(key==='inpatients') return label==='현재 입원환자 수'?`현재 입원환자는 ${shown}명입니다.`:`연평균 1일 입원환자는 ${shown}명입니다.`;
   if(key==='outpatients') return `연평균 1일 외래환자는 ${shown}명입니다.`;
   if(key==='staff_minimum') return `최소 필요 한의사 수를 ${shown}명으로 계산했습니다.`;
+  if(key==='duty_minimum') return `당직 한의사의 최소 필요 인원을 ${shown}명으로 계산했습니다.`;
   if(key==='bed_count') return `개설 예정 병상은 ${shown}병상입니다.`;
   if(key==='departments') return `설치 예정 진료과목은 ${shown}입니다.`;
   if(key==='department_count') return `설치 예정 진료과목은 모두 ${shown}개입니다.`;
@@ -77,6 +92,12 @@ const caseExplanation=(rule:Rule,selected:Record<string,unknown>,approved:boolea
   const field=text(rule.changedField)||(rule.approveFacts.length&&rule.rejectFacts.length&&differences.length===1?differences[0]:'');
   if(!field)return `${approved?'승인':'반려'}: ${text(rule.note)||'제출된 사실과 법령 원문의 판단 기준을 확인하세요.'}`;
   const label=rule.factLabels?.[field]||field;
+  const duty=dutyToken(pass[field]);
+  if(duty){
+    const patients=Number(selected[duty[1]]),divisor=Number(duty[2]) as 200|300;
+    const minimum=calculateDutyMinimum(patients,divisor);
+    return `${approved?'승인':'반려'}: 현재 입원환자 ${patients}명을 ${divisor}명으로 나눈 수를 올림하면 당직 한의사는 최소 ${minimum}명입니다. 제시된 ${selected[field]}명은 ${approved?'정확한 최소 인원입니다.':'최소 인원 계산과 다릅니다. 더 많이 배치할 수 있는지와 최소 인원 계산은 구분해야 합니다.'}`;
+  }
   const calculation=staffToken(pass[field]);
   if(calculation){
     const inpatients=Number(selected[calculation[1]]),outpatients=Number(selected[calculation[2]]),divisor=Number(calculation[3]) as 60|120;
@@ -125,7 +146,7 @@ export const isRuleBank=(value:unknown):value is RuleBank=>!!value&&typeof value
 export function makeRuleCase(bank:RuleBank,rule:Rule,approved:boolean,index=0):Case{
   const selected=materializeFacts((approved?rule.approveFacts:rule.rejectFacts)[index]);
   const item:Case={id:`${rule.id}:${approved?'approve':'reject'}:${index}`,law:rule.law,article:rule.article,title:rule.title,sender:'보건법규 심사 접수실',body:caseBody(rule,approved),details:facts(selected,rule.factLabels,rule.factOrder),answer:approved,explanation:caseExplanation(rule,selected,approved),rule:rule.lawText||rule.article,chapter:0,difficulty:rule.difficulty==='쉬움'?'기초':rule.difficulty==='어려움'?'심화':'응용',source:rule.source,origin:`자동출제 규칙 · ${bank.name}`};
-  return staffToken(rule.approveFacts[0]?.[rule.changedField])?Object.assign(item,{ruleGeneration:{name:bank.name,rule,index}}):item;
+  return staffToken(rule.approveFacts[0]?.[rule.changedField])||dutyToken(rule.approveFacts[0]?.[rule.changedField])?Object.assign(item,{ruleGeneration:{name:bank.name,rule,index}}):item;
 }
 // Keep the generated question stable while answering, then redraw on a new session.
 export function refreshRuleCase(item:Case):Case{
