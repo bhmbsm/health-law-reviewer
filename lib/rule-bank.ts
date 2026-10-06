@@ -1,6 +1,7 @@
-import * as XLSX from 'xlsx';
+import type * as XLSXTypes from 'xlsx';
 import type {Case} from './cases';
 import {correctKnownMedicalRule} from './medical-rule-corrections';
+import {assertLawSource} from './question-bank';
 
 export type RuleBank={kind:'rule-bank';id:string;name:string;rules:Rule[];createdAt:string};
 export type Rule={id:string;lawKey:string;law:string;article:string;title:string;difficulty:string;note:string;scenario:string;approveFacts:Record<string,unknown>[];rejectFacts:Record<string,unknown>[];factLabels:Record<string,string>;factOrder:string[];changedField:string;source:string;lawText:string;approveBody:string;rejectBody:string;judgmentBasis?:string;auditVersion?:number};
@@ -8,10 +9,7 @@ type Row=Record<string,unknown>;
 
 const text=(value:unknown)=>String(value??'').trim();
 const object=(value:unknown)=>{try{const parsed=JSON.parse(text(value));return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed as Record<string,unknown>:{};}catch{return {};}};
-const sheetRows=(workbook:XLSX.WorkBook,name:string):Row[]=>{
-  const sheet=workbook.Sheets[name];
-  return sheet?XLSX.utils.sheet_to_json<Row>(sheet,{defval:''}):[];
-};
+
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const variants=(base:Record<string,unknown>,field:string,values:string[])=>values.length?values.map(value=>({...base,[field]:value})):[base];
 const staffToken=(value:unknown)=>typeof value==='string'?value.match(/^STAFF_MIN:(inpatients):(outpatients):(60|120):(-1|0|1)$/):null;
@@ -152,14 +150,25 @@ const caseExplanation=(rule:Rule,selected:Record<string,unknown>,approved:boolea
     return `${approved?'승인':'반려'}: ${selected[field]===''?'신청서에 필수 요건이 제시되지 않았습니다.':stated} ${basis}`;
   }
   if(approved) return `승인: ${stated} 법정 기준에 맞습니다.`;
-  const standard=factSentence(field,rule.approveFacts[0]?.[field],label);
+  const passValue=rule.approveFacts[0]?.[field];
+  const range=typeof passValue==='string'?passValue.match(/^RAND_INT:(\d+):(\d+):(\d+)$/):null;
+  if(field==='bed_count'&&range)return `반려: ${stated} 최소 병상 기준은 ${range[1]}병상입니다.`;
+  const standardValue=typeof passValue==='string'&&passValue.startsWith('RAND_CHOICE:')?passValue.slice(12).split(':').join(' 또는 '):range?`${range[1]}~${range[2]}`:passValue;
+  const standard=factSentence(field,standardValue,label);
   return `반려: ${stated} 법정 기준은 ${standard}`;
 };
 
 export async function parseRuleBank(file:File):Promise<RuleBank>{
+  const XLSX=await import('xlsx');
+  const sheetRows=(workbook:XLSXTypes.WorkBook,name:string):Row[]=>{
+    const sheet=workbook.Sheets[name];
+    return sheet?XLSX.utils.sheet_to_json<Row>(sheet,{defval:''}):[];
+  };
   const workbook=XLSX.read(await file.arrayBuffer(),{type:'array'});
   for(const required of ['법전','문항규칙','판정기준','값목록','학생 사례 미리보기','사례검증']) if(!workbook.SheetNames.includes(required)) throw Error(`${required} 시트를 찾을 수 없습니다.`);
-  const laws=new Map(sheetRows(workbook,'법전').map(row=>[text(row['법전키']),row]));
+  const lawRows=sheetRows(workbook,'법전');
+  const laws=new Map<string,Row>();
+  for(const row of lawRows){const key=text(row['법전키']);if(!key)continue;if(laws.has(key))throw Error('법전키가 중복됩니다: '+key);laws.set(key,row);}
   const verification=new Map(sheetRows(workbook,'사례검증').map(row=>[text(row['규칙ID']),row]));
   const previews=new Map(sheetRows(workbook,'학생 사례 미리보기').map(row=>[text(row['규칙ID']),row]));
   const criteria=sheetRows(workbook,'판정기준');
@@ -168,6 +177,8 @@ export async function parseRuleBank(file:File):Promise<RuleBank>{
   const rules=rawRules.map((row):Rule|null=>{
     const id=text(row['규칙ID']);const lawKey=text(row['법전키']);const lawRow=laws.get(lawKey);const checked=verification.get(id);const preview=previews.get(id);
     if(!id||!lawRow||!checked) return null;
+    if(!text(lawRow['법령명']))throw Error(id+': 법전의 법령명이 비어 있습니다.');
+    assertLawSource(text(lawRow['법령명']),text(lawRow['공식 링크']));
     const approve=object(checked['승인 사실값(JSON)']||row['승인 사례 사실값(JSON)']);
     const reject=object(checked['반려 사실값(JSON)']||row['반려 사례 사실값(JSON)']);
     const hasApprove=Object.keys(approve).length>0;
@@ -184,7 +195,7 @@ export async function parseRuleBank(file:File):Promise<RuleBank>{
     const rejectValues=values.filter(item=>text(item['목록ID'])===listId&&text(item['판정역할'])==='반려').map(item=>text(item['표시값'])).filter(Boolean);
     if((hasApprove&&!passValues.length)||(hasReject&&!rejectValues.length))throw Error(`${id}: 값목록의 승인·반려 값이 누락됐습니다.`);
     const factLabels=Object.fromEntries(criteria.filter(item=>text(item['규칙ID'])===id).map(item=>[text(item['필드키']),text(item['화면 표시명'])||text(item['필드키'])]));
-    return {id,lawKey,law:text(lawRow['법령명'])||'의료법',article:text(row['주요참조'])||text(lawRow['조문참조']),title:text(row['문항명']),difficulty:text(row['난이도'])||'보통',note:text(row['메모']),scenario:text(row['고정 시나리오'])||text(preview?.['승인 사례(화면 초안)']),approveFacts:hasApprove?variants(approve,changedField,passValues):[],rejectFacts:hasReject?variants(reject,changedField,rejectValues):[],factLabels,factOrder:criteria.filter(item=>text(item['규칙ID'])===id).sort((a,b)=>Number(a['순서'])-Number(b['순서'])).map(item=>text(item['필드키'])).filter(Boolean),changedField,source:text(lawRow['공식 링크']),lawText:formatLawText(text(lawRow['조문 원문'])),approveBody:text(preview?.['승인 사례(화면 초안)']),rejectBody:text(preview?.['반려 사례(화면 초안)']),judgmentBasis:text(row['판정 근거']),auditVersion:text(row['판정 근거'])?1:undefined};
+    return {id,lawKey,law:text(lawRow['법령명']),article:text(row['주요참조'])||text(lawRow['조문참조']),title:text(row['문항명']),difficulty:text(row['난이도'])||'보통',note:text(row['메모']),scenario:text(row['고정 시나리오'])||text(preview?.['승인 사례(화면 초안)']),approveFacts:hasApprove?variants(approve,changedField,passValues):[],rejectFacts:hasReject?variants(reject,changedField,rejectValues):[],factLabels,factOrder:criteria.filter(item=>text(item['규칙ID'])===id).sort((a,b)=>Number(a['순서'])-Number(b['순서'])).map(item=>text(item['필드키'])).filter(Boolean),changedField,source:text(lawRow['공식 링크']),lawText:formatLawText(text(lawRow['조문 원문'])),approveBody:text(preview?.['승인 사례(화면 초안)']),rejectBody:text(preview?.['반려 사례(화면 초안)']),judgmentBasis:text(row['판정 근거']),auditVersion:text(row['판정 근거'])?1:undefined};
   }).filter((rule):rule is Rule=>rule!==null);
   if(rules.length!==rawRules.length)throw Error(`출제 규칙 ${rawRules.length-rules.length}개가 법전·판정기준·사례검증 연결 검사를 통과하지 못했습니다. 일부 규칙을 누락시킨 채 저장할 수 없습니다.`);
   for(const raw of rules){
@@ -202,6 +213,7 @@ export async function parseRuleBank(file:File):Promise<RuleBank>{
 export const isRuleBank=(value:unknown):value is RuleBank=>!!value&&typeof value==='object'&&(value as RuleBank).kind==='rule-bank'&&Array.isArray((value as RuleBank).rules);
 export function makeRuleCase(bank:RuleBank,rule:Rule,approved:boolean,index=0):Case{
   const corrected=correctKnownMedicalRule(rule);if(!corrected)throw Error('판정이 중첩되는 기존 의료법 규칙은 출제하지 않습니다.');rule=corrected;
+  assertLawSource(rule.law,rule.source||'');
   const selected=materializeFacts((approved?rule.approveFacts:rule.rejectFacts)[index]);
   const item:Case={id:`${rule.id}:${approved?'approve':'reject'}:${index}`,law:rule.law,article:rule.article,title:rule.title,sender:'보건법규 심사 접수실',body:caseBody(rule,selected),details:facts(selected,rule.factLabels,rule.factOrder,rule.scenario),answer:approved,explanation:caseExplanation(rule,selected,approved),rule:rule.lawText||rule.article,chapter:0,difficulty:rule.difficulty==='쉬움'?'기초':rule.difficulty==='어려움'?'심화':'응용',source:rule.source,origin:`자동출제 규칙 · ${bank.name}`};
   if(/RAND_|STAFF_MIN|DUTY_MIN|ROLE_OF|OMIT|\{[a-z_]+\}/.test([item.body,...item.details,item.explanation].join(' ')))throw Error('처리되지 않은 출제 규칙이 화면 문장에 남았습니다.');
