@@ -3,6 +3,7 @@ import type {Case} from './cases';
 import {correctKnownMedicalRule} from './medical-rule-corrections';
 import {assertLawSource} from './question-bank';
 import {insuranceLawBasis,insuranceScenario} from './insurance-explanation';
+import {studentRule} from './student-scenario';
 
 export type RuleBank={kind:'rule-bank';id:string;name:string;rules:Rule[];createdAt:string};
 export type Rule={id:string;lawKey:string;law:string;article:string;title:string;difficulty:string;note:string;scenario:string;approveFacts:Record<string,unknown>[];rejectFacts:Record<string,unknown>[];factLabels:Record<string,string>;factOrder:string[];changedField:string;source:string;lawText:string;approveBody:string;rejectBody:string;judgmentBasis?:string;auditVersion?:number};
@@ -217,6 +218,7 @@ export const isRuleBank=(value:unknown):value is RuleBank=>!!value&&typeof value
 export function makeRuleCase(bank:RuleBank,rule:Rule,approved:boolean,index=0):Case{
   const corrected=correctKnownMedicalRule(rule);if(!corrected)throw Error('판정이 중첩되는 기존 의료법 규칙은 출제하지 않습니다.');rule=corrected;
   assertLawSource(rule.law,rule.source||'');
+  rule=studentRule(rule);
   const selected=materializeFacts((approved?rule.approveFacts:rule.rejectFacts)[index]);
   const item:Case={id:`${rule.id}:${approved?'approve':'reject'}:${index}`,law:rule.law,article:rule.article,title:rule.title,sender:'보건법규 심사 접수실',body:caseBody(rule,selected),details:facts(selected,rule.factLabels,rule.factOrder,rule.scenario,rule.law),answer:approved,explanation:caseExplanation(rule,selected,approved),rule:rule.lawText||rule.article,chapter:0,difficulty:rule.difficulty==='쉬움'?'기초':rule.difficulty==='어려움'?'심화':'응용',source:rule.source,origin:`자동출제 규칙 · ${bank.name}`};
   if(/RAND_|STAFF_MIN|DUTY_MIN|ROLE_OF|OMIT|\{[a-z_]+\}/.test([item.body,...item.details,item.explanation].join(' ')))throw Error('처리되지 않은 출제 규칙이 화면 문장에 남았습니다.');
