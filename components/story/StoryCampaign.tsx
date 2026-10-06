@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Award, Badge, BadgeCheck, Brain, Crown, Gem, Handshake, Landmark, Medal, Shield, ShieldCheck, Sparkles, Star, Trophy, Zap } from 'lucide-react';
 import type { Case } from '../../lib/cases';
+import {lawCategory} from '../../lib/question-bank';
 import StoryCaseDocument from './StoryCaseDocument';
 import { applyStoryResult, initialStoryStats, randomChapterCases, storyChapters, type StoryStats } from '../../lib/story';
 import { loadStoryProgress, saveStoryProgress, type StoryProgress } from '../../lib/story-progress';
@@ -96,7 +97,7 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
   useEffect(() => { const timer = window.setTimeout(() => setProgress(loadStoryProgress(userId)), 0); return () => window.clearTimeout(timer); }, [userId]);
   const selected = queue[index];
   const visibleResult = selected && answeredCaseId === selected.id ? choice : null;
-  const available = useMemo(() => bank.filter((item) => storyChapters.some((entry) => entry.law && entry.law === item.law)), [bank]);
+  const available = useMemo(() => bank.filter((item) => storyChapters.some((entry) => entry.law && entry.law === lawCategory(item.law))), [bank]);
   function persist(next: StoryProgress) { setProgress(next); saveStoryProgress(next, userId); }
   function startChapter(ch: number) {
     if (!progress || ch > progress.unlockedThrough) return;
@@ -111,7 +112,7 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
     setChapterStartUnlockedThrough(progress.unlockedThrough);
     setAttemptedIds(attempted);
     setAttemptedThisRun(new Set());
-    setChapterCaseCount(bank.filter((item) => item.law === storyChapters[ch].law).length);
+    setChapterCaseCount(bank.filter((item) => lawCategory(item.law) === storyChapters[ch].law).length);
     setChapter(ch); setQueue(cases); setIndex(0); setCorrectCount(0); setChoice(null); setAnsweredCaseId(null); setIncidentSeen(false);
     caseStartedAt.current = currentTimestamp();
     setStage('briefing');
@@ -136,7 +137,7 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
     if (!incidentSeen && queue.length > 1 && index + 1 >= Math.ceil(queue.length / 2)) { setStage('incident'); return; }
     if (index + 1 < queue.length) { setIndex((n) => n + 1); setChoice(null); setAnsweredCaseId(null); caseStartedAt.current = currentTimestamp(); return; }
     const law = storyChapters[chapter].law;
-    const pending = bank.filter((item) => item.law === law && !attemptedIds.has(item.id));
+    const pending = bank.filter((item) => lawCategory(item.law) === law && !attemptedIds.has(item.id));
     if (pending.length) {
       setQueue(randomChapterCases(bank, chapter, attemptedIds)); setIndex(0); setChoice(null); setAnsweredCaseId(null); setStage('briefing'); caseStartedAt.current = currentTimestamp(); return;
     }
@@ -172,7 +173,7 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
   const trustChange = currentTrust - startTrust;
   const chapterTotal = Math.max(0, Math.floor(safeNumber(chapterCaseCount)));
   const recordedIds = new Set([...attemptedIds, ...attemptedThisRun]);
-  const chapterDone = Math.min(chapterTotal, bank.filter((item) => item.law === active.law && recordedIds.has(item.id)).length);
+  const chapterDone = Math.min(chapterTotal, bank.filter((item) => lawCategory(item.law) === active.law && recordedIds.has(item.id)).length);
   const chapterProgress = chapterTotal ? Math.round(chapterDone / chapterTotal * 100) : 0;
   return <section className="story-campaign">
     <header className="story-top"><div><span className="eyebrow">스토리 캠페인</span><h1>심사관의 업무일지</h1></div><button className="secondary" onClick={onExit}>나가기</button></header>
@@ -185,7 +186,7 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
       </div>
       <div className="chapter-promotion-progress"><small>승진까지 <b>{chapterDone} / {chapterTotal}</b></small><AnimatedBar value={chapterProgress}/></div>
     </div>
-    {stage === 'campaign' && <><p>챕터 상태는 플레이 가능 여부와 문항 준비 여부로 나뉩니다.</p><div className="story-chapters">{storyChapters.map((entry, i) => { const ready = !!entry.law && bank.some((item) => item.law === entry.law); const unlocked = i <= progress.unlockedThrough; const status = !ready ? '🕓 준비 중' : unlocked ? '🔓 플레이 가능' : '🔒 잠김'; const statusClass = !ready ? 'preparing' : unlocked ? 'unlocked' : 'locked'; return <article className={`panel story-chapter ${statusClass}`} key={entry.title}><div className="story-chapter-heading"><small>제{i + 1}장 · {entry.rank}</small><span className={`story-status ${statusClass}`}>{status}</span></div><h2>{entry.title}</h2><p>{ready ? `${entry.law} · ${bank.filter((item) => item.law === entry.law).length}개 문항` : '법령 및 문항 준비 중'}</p><button className="primary" disabled={!ready || !unlocked} onClick={() => startChapter(i)}>{!ready ? '준비 중' : unlocked ? (progress.completed.includes(i) ? '다시 플레이' : '시작') : '이전 챕터 완료 필요'}</button></article>; })}</div><p className="small">현재 출제 가능한 법령: {Array.from(new Set(available.map((item) => item.law))).join(' · ') || '없음'}</p></>}
+    {stage === 'campaign' && <><p>챕터 상태는 플레이 가능 여부와 문항 준비 여부로 나뉩니다.</p><div className="story-chapters">{storyChapters.map((entry, i) => { const ready = !!entry.law && bank.some((item) => lawCategory(item.law) === entry.law); const unlocked = i <= progress.unlockedThrough; const status = !ready ? '🕓 준비 중' : unlocked ? '🔓 플레이 가능' : '🔒 잠김'; const statusClass = !ready ? 'preparing' : unlocked ? 'unlocked' : 'locked'; return <article className={`panel story-chapter ${statusClass}`} key={entry.title}><div className="story-chapter-heading"><small>제{i + 1}장 · {entry.rank}</small><span className={`story-status ${statusClass}`}>{status}</span></div><h2>{entry.title}</h2><p>{ready ? `${entry.law} · ${bank.filter((item) => lawCategory(item.law) === entry.law).length}개 문항` : '법령 및 문항 준비 중'}</p><button className="primary" disabled={!ready || !unlocked} onClick={() => startChapter(i)}>{!ready ? '준비 중' : unlocked ? (progress.completed.includes(i) ? '다시 플레이' : '시작') : '이전 챕터 완료 필요'}</button></article>; })}</div><p className="small">현재 출제 가능한 법령: {Array.from(new Set(available.map((item) => lawCategory(item.law)))).join(' · ') || '없음'}</p></>}
     {stage === 'briefing' && <article className="panel story-paper"><small>제{chapter + 1}장 · {active.law}</small><h2>{active.title}</h2><p>{active.briefing}</p><p>이번 심사 묶음 {queue.length}개 · 승진까지 {chapterDone} / {chapterTotal}</p><button className="primary" onClick={() => { setStage(queue.length ? 'case' : 'summary'); caseStartedAt.current = currentTimestamp(); }}>{queue.length ? '심사 시작' : '문항 없음 · 결산 보기'}</button></article>}
     {stage === 'case' && selected && <StoryCaseDocument selected={selected} index={index} total={queue.length} result={visibleResult} saving={saving} onAnswer={submit} onNext={nextCase} nextLabel={index + 1 < queue.length ? '다음 사례' : incidentSeen ? '결산' : '중간 사건'}/>}
     {stage === 'incident' && <article className="panel story-incident"><small>업무 중 잠시</small><h2>{active.incidentTitle}</h2><p>{active.incident}</p><button className="primary" onClick={continueAfterIncident}>사례 계속 심사</button></article>}
