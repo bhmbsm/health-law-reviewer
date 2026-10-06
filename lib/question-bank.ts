@@ -39,7 +39,7 @@ export function assertLawSource(law:string,source:string):void{
 export function assertReadyCase(item:Case):void{
  if(!item||typeof item.id!=='string'||!Array.isArray(item.details))throw Error('문항 형식이 올바르지 않습니다.');
  assertLawSource(item.law,item.source||'');
- if(/RAND_|STAFF_MIN:|DUTY_MIN:|ROLE_OF:|\{[a-z_]+\}/.test([item.body,...item.details,item.explanation].join(' ')))throw Error('엑셀 변수 처리가 끝나지 않은 고정 문항입니다. 원본 엑셀을 등록해 주세요.');
+ if(/RAND_|STAFF_MIN:|DUTY_MIN:|ROLE_OF:|\{[a-z_][a-z_0-9]*\}/i.test([item.title,item.body,...item.details,item.explanation].join(' ')))throw Error('엑셀 변수 처리가 끝나지 않은 고정 문항입니다. 원본 엑셀을 등록해 주세요.');
 }
 export async function buildQuestionBank(shared:{payload:unknown}[],saved:Case[]=[],localRuleBanks:RuleBank[]=[],online=true):Promise<Case[]>{
  // Shared uploads are authoritative. Old browser questions must never override new rules.
