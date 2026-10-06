@@ -7,16 +7,23 @@ export function shuffle<T>(items:readonly T[],random= Math.random):T[]{
  for(let i=result.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[result[i],result[j]]=[result[j],result[i]];}
  return result;
 }
-export function selectRandomCases(items:Case[],limit=5):Case[]{
+/** Penalty nodes remain available but receive half the draw weight of other Medical Act nodes. */
+export function caseSelectionWeight(item:Pick<Case,'law'|'article'>):number{
+ const article=item.article?.match(/^(?:의료법\s*)?제(\d+)조/);
+ return item.law==='의료법'&&article&&Number(article[1])>=87&&Number(article[1])<=92?0.5:1;
+}
+export function selectRandomCases(items:Case[],limit=5,random=Math.random):Case[]{
  const groups=new Map<string,Case[]>();
  for(const item of items){
   const key=item.law+'|'+item.id.replace(/:(approve|reject):\d+$/,'');
   const group=groups.get(key)||[];group.push(item);groups.set(key,group);
  }
- return shuffle([...groups.values()]).slice(0,limit).map(group=>{
+ // Exponential races give weighted sampling without replacement, one draw per node.
+ return [...groups.values()].map(group=>({group,score:-Math.log(1-random())/caseSelectionWeight(group[0])}))
+ .sort((a,b)=>a.score-b.score).slice(0,limit).map(({group})=>{
   const sides=[group.filter(c=>c.answer),group.filter(c=>!c.answer)].filter(side=>side.length);
-  const side=sides[Math.floor(Math.random()*sides.length)];
-  return side[Math.floor(Math.random()*side.length)];
+  const side=sides[Math.floor(random()*sides.length)];
+  return side[Math.floor(random()*side.length)];
  });
 }
 export async function ruleBankStorageId(bank:Pick<RuleBank,'name'>):Promise<string>{
