@@ -101,5 +101,9 @@ export function studentFact(value:unknown,law:string):unknown{
 /** Expand only student-facing facts and prose. Source text, references and answers stay intact. */
 export function studentRule(rule:Rule):Rule{
  const facts=(rows:Record<string,unknown>[])=>rows.map(row=>Object.fromEntries(Object.entries(row).map(([k,v])=>[k,studentFact(v,rule.law)])));
- return {...rule,scenario:studentText(rule.scenario,rule.law),approveFacts:facts(rule.approveFacts),rejectFacts:facts(rule.rejectFacts)};
+ // Legacy copies baked the first approval into the prose while rotating the fact below it.
+ const scenario=rule.id==='ML-A57-EXEMPT-001'&&rule.factLabels?.advertisement_content&&/^저는 의료기관의 장입니다\./.test(rule.scenario)&&rule.scenario.includes('만 담은 의료광고를 만들었습니다.')
+  ? '저는 의료기관의 장입니다. {advertisement_content}만 담은 의료광고를 만들었습니다. 사전 심의 없이 이 광고를 해도 될까요?'
+  : rule.scenario;
+ return {...rule,scenario:studentText(scenario,rule.law),approveFacts:facts(rule.approveFacts),rejectFacts:facts(rule.rejectFacts)};
 }
