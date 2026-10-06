@@ -6,7 +6,7 @@ import {insuranceLawBasis,insuranceScenario} from './insurance-explanation';
 import {studentRule} from './student-scenario';
 
 export type RuleBank={kind:'rule-bank';id:string;name:string;rules:Rule[];createdAt:string};
-export type Rule={id:string;lawKey:string;law:string;article:string;title:string;difficulty:string;note:string;scenario:string;approveFacts:Record<string,unknown>[];rejectFacts:Record<string,unknown>[];factLabels:Record<string,string>;factOrder:string[];changedField:string;source:string;lawText:string;approveBody:string;rejectBody:string;judgmentBasis?:string;auditVersion?:number};
+export type Rule={id:string;lawKey:string;law:string;article:string;title:string;difficulty:string;note:string;scenario:string;approveFacts:Record<string,unknown>[];rejectFacts:Record<string,unknown>[];factLabels:Record<string,string>;factOrder:string[];changedField:string;source:string;lawText:string;approveBody:string;rejectBody:string;judgmentBasis?:string;auditVersion?:number;embeddedFactKeys?:string[];caseExpressions?:Record<string,string>};
 type Row=Record<string,unknown>;
 
 const text=(value:unknown)=>String(value??'').trim();
@@ -102,9 +102,22 @@ const factSentence=(key:string,value:unknown,label:string,law='')=>{
   if(key==='patient_age')return `환자는 만 ${shown}세입니다.`;
   return `${label}: ${shown}.`;
 };
-const renderTemplate=(template:string,selected:Record<string,unknown>)=>template.replace(/\{([a-zA-Z_][a-zA-Z_0-9]*)\}/g,(_,key)=>{
+// Display expressions change wording only; stored facts and answer selection stay intact.
+const renderTemplate=(template:string,selected:Record<string,unknown>,expressions?:Record<string,string>)=>template.replace(/\{([a-zA-Z_][a-zA-Z_0-9]*)\}([”’"']?)(?:(으로|로|이라는|라는|은|는|이|가|을|를)(?=\s|[,.?!]|$))?/g,(_,key,quote,particle)=>{
   if(!(key in selected))throw Error(`사례 틀에 연결되지 않은 필드가 있습니다: ${key}`);
-  return displayValue(selected[key]??'');
+  const raw=displayValue(selected[key]??'');
+  const shown=expressions?.[raw]??raw;
+  if(!expressions||!particle)return shown+quote+(particle||'');
+  const ending=shown.trim().replace(/\([^)]*\)$/, '').trim().slice(-1);
+  const digitEnds=['영','일','이','삼','사','오','육','칠','팔','구'];
+  const last=/[0-9]/.test(ending)?digitEnds[Number(ending)]:ending;
+  if(!last||!/[가-힣]/.test(last))return shown+quote+particle;
+  const final=(last.charCodeAt(0)-0xac00)%28;
+  const suffix=particle==='으로'||particle==='로'?(final&&final!==8?'으로':'로'):
+    particle==='이라는'||particle==='라는'?(final?'이라는':'라는'):
+    particle==='은'||particle==='는'?(final?'은':'는'):
+    particle==='이'||particle==='가'?(final?'이':'가'):(final?'을':'를');
+  return shown+quote+suffix;
 }).replace(/\s{2,}/g,' ').trim();
 // Older spreadsheets sometimes wrote the authority directly in the scenario as well
 // as in a fact field.  Replace that stale authority with the selected value before
@@ -113,6 +126,7 @@ const authorityScenario=(rule:Rule,selected:Record<string,unknown>)=>{
   let scenario=insuranceScenario(rule)||'제출된 신청 내용을 검토해 승인 또는 반려를 결정하세요.';
   for(const [key,label] of Object.entries(rule.factLabels||{})){
     if(!/(주체|권한|직책|지정권자|명령권자|담당.?기관|신고.?기관)/.test(label))continue;
+    if(scenario.includes(`{${key}}`))continue;
     const selectedValue=text(selected[key]);
     if(!selectedValue)continue;
     // Include the common public authorities as well.  Some legacy rows listed
@@ -128,8 +142,8 @@ const authorityScenario=(rule:Rule,selected:Record<string,unknown>)=>{
   }
   return scenario;
 };
-const caseBody=(rule:Rule,selected:Record<string,unknown>)=>renderTemplate(authorityScenario(rule,selected),selected);
-const facts=(value:Record<string,unknown>,labels:Record<string,string>={},order:string[]=[],scenario='',law='')=>Object.entries(value).sort(([a],[b])=>{const ai=order.indexOf(a),bi=order.indexOf(b);return (ai<0?Number.MAX_SAFE_INTEGER:ai)-(bi<0?Number.MAX_SAFE_INTEGER:bi);}).filter(([key,item])=>item!==''&&item!==null&&item!==undefined&&!scenario.includes(`{${key}}`)).flatMap(([key,item])=>{
+const caseBody=(rule:Rule,selected:Record<string,unknown>)=>renderTemplate(authorityScenario(rule,selected),selected,rule.caseExpressions);
+const facts=(value:Record<string,unknown>,labels:Record<string,string>={},order:string[]=[],scenario='',law='',embeddedFactKeys:string[]=[])=>Object.entries(value).sort(([a],[b])=>{const ai=order.indexOf(a),bi=order.indexOf(b);return (ai<0?Number.MAX_SAFE_INTEGER:ai)-(bi<0?Number.MAX_SAFE_INTEGER:bi);}).filter(([key,item])=>item!==''&&item!==null&&item!==undefined&&!scenario.includes(`{${key}}`)&&!embeddedFactKeys.includes(key)).flatMap(([key,item])=>{
   const shown=displayValue(item);
   if(['document_items','consent_items'].includes(key))return shown.split(' / ').map((part,i)=>`${i+1}. ${part}`);
   const label=labels[key]&&!/^[a-z_0-9]+$/i.test(labels[key])?labels[key]:'제출 사항';
@@ -225,8 +239,20 @@ export async function parseRuleBank(file:File):Promise<RuleBank>{
     const passValues=values.filter(item=>text(item['목록ID'])===listId&&text(item['판정역할'])==='통과').map(item=>text(item['표시값'])).filter(Boolean);
     const rejectValues=values.filter(item=>text(item['목록ID'])===listId&&text(item['판정역할'])==='반려').map(item=>text(item['표시값'])).filter(Boolean);
     if((hasApprove&&!passValues.length)||(hasReject&&!rejectValues.length))throw Error(`${id}: 값목록의 승인·반려 값이 누락됐습니다.`);
+    // Only fixed background facts explicitly woven into a reviewed scenario may be suppressed.
+    const embeddedFactKeys=text(row['사례 반영 필드']).split(';').map(key=>key.trim()).filter(Boolean);
+    for(const key of embeddedFactKeys){
+      if(!/^condition_\d+$/.test(key)||key===changedField||!(key in approve)||!(key in reject)||!same(approve[key],reject[key]))
+        throw Error(`${id}: 사례 반영 필드는 승인·반려에서 동일한 고정 배경 조건이어야 합니다.`);
+    }
+    const expressionSource=text(row['사례 표현값(JSON)']);
+    const caseExpressions=expressionSource?Object.fromEntries(Object.entries(object(expressionSource)).map(([key,value])=>[key,text(value)])):undefined;
+    const knownValues=[...passValues,...rejectValues,...Object.values(approve).map(text),...Object.values(reject).map(text)];
+    for(const [key,value]of Object.entries(caseExpressions||{})){
+      if(!knownValues.includes(key)||!value)throw Error(`${id}: 사례 표현값은 기존 사실값에 연결된 문장이어야 합니다.`);
+    }
     const factLabels=Object.fromEntries(criteria.filter(item=>text(item['규칙ID'])===id).map(item=>[text(item['필드키']),text(item['화면 표시명'])||text(item['필드키'])]));
-    return {id,lawKey,law:text(lawRow['법령명']),article:text(row['주요참조'])||text(lawRow['조문참조']),title:text(row['문항명']),difficulty:text(row['난이도'])||'보통',note:text(row['메모']),scenario:text(row['고정 시나리오'])||text(preview?.['승인 사례(화면 초안)']),approveFacts:hasApprove?variants(approve,changedField,passValues):[],rejectFacts:hasReject?variants(reject,changedField,rejectValues):[],factLabels,factOrder:criteria.filter(item=>text(item['규칙ID'])===id).sort((a,b)=>Number(a['순서'])-Number(b['순서'])).map(item=>text(item['필드키'])).filter(Boolean),changedField,source:text(lawRow['공식 링크']),lawText:formatLawText(text(lawRow['조문 원문'])),approveBody:text(preview?.['승인 사례(화면 초안)']),rejectBody:text(preview?.['반려 사례(화면 초안)']),judgmentBasis:text(row['판정 근거']),auditVersion:text(row['판정 근거'])?1:undefined};
+    return {id,lawKey,law:text(lawRow['법령명']),article:text(row['주요참조'])||text(lawRow['조문참조']),title:text(row['문항명']),difficulty:text(row['난이도'])||'보통',note:text(row['메모']),scenario:text(row['고정 시나리오'])||text(preview?.['승인 사례(화면 초안)']),approveFacts:hasApprove?variants(approve,changedField,passValues):[],rejectFacts:hasReject?variants(reject,changedField,rejectValues):[],factLabels,factOrder:criteria.filter(item=>text(item['규칙ID'])===id).sort((a,b)=>Number(a['순서'])-Number(b['순서'])).map(item=>text(item['필드키'])).filter(Boolean),changedField,source:text(lawRow['공식 링크']),lawText:formatLawText(text(lawRow['조문 원문'])),approveBody:text(preview?.['승인 사례(화면 초안)']),rejectBody:text(preview?.['반려 사례(화면 초안)']),judgmentBasis:text(row['판정 근거']),auditVersion:text(row['판정 근거'])?1:undefined,embeddedFactKeys,caseExpressions};
   }).filter((rule):rule is Rule=>rule!==null);
   if(rules.length!==rawRules.length)throw Error(`출제 규칙 ${rawRules.length-rules.length}개가 법전·판정기준·사례검증 연결 검사를 통과하지 못했습니다. 일부 규칙을 누락시킨 채 저장할 수 없습니다.`);
   for(const raw of rules){
@@ -247,7 +273,7 @@ export function makeRuleCase(bank:RuleBank,rule:Rule,approved:boolean,index=0):C
   assertLawSource(rule.law,rule.source||'');
   rule=studentRule(rule);
   const selected=materializeFacts((approved?rule.approveFacts:rule.rejectFacts)[index]);
-  const item:Case={id:`${rule.id}:${approved?'approve':'reject'}:${index}`,law:rule.law,article:rule.article,title:rule.title,sender:'보건법규 심사 접수실',body:caseBody(rule,selected),details:facts(selected,rule.factLabels,rule.factOrder,rule.scenario,rule.law),answer:approved,explanation:caseExplanation(rule,selected,approved),rule:rule.lawText||rule.article,chapter:0,difficulty:rule.difficulty==='쉬움'?'기초':rule.difficulty==='어려움'?'심화':'응용',source:rule.source,origin:`자동출제 규칙 · ${bank.name}`};
+  const item:Case={id:`${rule.id}:${approved?'approve':'reject'}:${index}`,law:rule.law,article:rule.article,title:rule.title,sender:'보건법규 심사 접수실',body:caseBody(rule,selected),details:facts(selected,rule.factLabels,rule.factOrder,rule.scenario,rule.law,rule.embeddedFactKeys),answer:approved,explanation:caseExplanation(rule,selected,approved),rule:rule.lawText||rule.article,chapter:0,difficulty:rule.difficulty==='쉬움'?'기초':rule.difficulty==='어려움'?'심화':'응용',source:rule.source,origin:`자동출제 규칙 · ${bank.name}`};
   if(/RAND_|STAFF_MIN|DUTY_MIN|ROLE_OF|OMIT|\{[a-z_]+\}/.test([item.body,...item.details,item.explanation].join(' ')))throw Error('처리되지 않은 출제 규칙이 화면 문장에 남았습니다.');
   return Object.values(selected).length?Object.assign(item,{ruleGeneration:{name:bank.name,rule,index}}):item;
 }
@@ -257,3 +283,4 @@ export function refreshRuleCase(item:Case):Case{
   return generation?makeRuleCase({name:generation.name} as RuleBank,generation.rule,item.answer,generation.index):item;
 }
 export function makeRuleCases(banks:RuleBank[]):Case[]{return banks.flatMap(bank=>bank.rules.flatMap(raw=>{const rule=correctKnownMedicalRule(raw);return rule?[...rule.approveFacts.map((_,index)=>makeRuleCase(bank,rule,true,index)),...rule.rejectFacts.map((_,index)=>makeRuleCase(bank,rule,false,index))]:[];}));}
+
