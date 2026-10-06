@@ -154,6 +154,19 @@ const caseExplanation=(rule:Rule,selected:Record<string,unknown>,approved:boolea
     const minimum=calculateStaffMinimum(inpatients,outpatients,divisor);
     return `${approved?'승인':'반려'}: 입원환자 ${inpatients}명 ÷ ${divisor/3} + 외래환자 ${outpatients}명 ÷ ${divisor}의 합을 마지막에 올림하면 최소 ${minimum}명입니다. 제시된 ${selected[field]}명은 ${approved?'정확한 최소 인원입니다.':'최소 인원 계산과 다릅니다. 더 많이 배치할 수 있는지와 최소 인원 계산은 구분해야 합니다.'}`;
   }
+  if(field==='disqualification_fact'){
+    const v=text(selected[field]);let reason='';
+    if(/정신질환/.test(v))reason=approved?'전문의가 의료인으로서 적합하다고 인정했으므로 결격사유의 예외에 해당합니다.':'의료인으로서 적합하다는 전문의의 인정이 제시되지 않아 결격사유에 해당합니다.';
+    else if(/중독/.test(v))reason='마약ㆍ대마ㆍ향정신성의약품 중독은 의료인의 결격사유에 해당합니다.';
+    else if(/피성년후견인|피한정후견인/.test(v))reason='피성년후견인 또는 피한정후견인은 의료인의 결격사유에 해당합니다.';
+    else if(/집행 종료|집행면제/.test(v))reason=approved?'집행 종료 또는 집행면제 확정 후 5년 이상 지났으므로 이 기간에 따른 결격사유에 해당하지 않습니다.':'집행 종료 또는 집행면제 확정 후 5년이 지나지 않았으므로 결격사유에 해당합니다.';
+    else if(/집행유예/.test(v))reason=approved?'집행유예 기간 종료 후 2년 이상 지났으므로 이 기간에 따른 결격사유에 해당하지 않습니다.':'집행유예 기간 종료 후 2년이 지나지 않았으므로 결격사유에 해당합니다.';
+    else if(/선고유예/.test(v))reason=approved?'선고유예 기간이 끝났으므로 이 기간에 따른 결격사유에 해당하지 않습니다.':'선고유예 기간 중이므로 결격사유에 해당합니다.';
+    else if(approved)reason='제시된 사실 자체는 의료법 제8조에 정한 결격사유가 아닙니다.';
+    else reason='제시된 사실은 의료법 제8조에 정한 결격사유에 해당합니다.';
+    // Explain only the selected case; the shared basis lists unrelated variants.
+    return `${approved?'승인':'반려'}: ${v}. ${reason}`;
+  }
   const stated=factSentence(field,selected[field],label,rule.law);
   const judgmentBasis=rule.judgmentBasis||insuranceLawBasis(rule);
   if(judgmentBasis){
@@ -164,15 +177,7 @@ const caseExplanation=(rule:Rule,selected:Record<string,unknown>,approved:boolea
       const missing=required.filter(x=>!submitted.includes(x));const added=submitted.filter(x=>!required.includes(x));
       return `반려: ${missing.length?`필수사항 “${missing.join('”, “')}”이 빠졌습니다.`:'법정 필수사항과 다릅니다.'}${added.length?` 대신 들어간 “${added.join('”, “')}”은 빠진 필수사항을 대신하지 못합니다.`:''} ${basis}`;
     }
-    if(field==='disqualification_fact'){
-      const v=text(selected[field]);let reason='';
-      if(/정신질환/.test(v))reason=approved?'전문의가 의료인으로 적합하다고 인정한 예외입니다.':'적합하다는 전문의 인정이 제시되지 않아 정신질환자 결격사유를 충족합니다.';
-      else if(/집행 종료|집행면제/.test(v))reason=approved?'집행 종료·면제 확정 후 5년이 지났습니다.':'집행 종료·면제 확정 후 5년이 지나지 않았습니다.';
-      else if(/집행유예/.test(v))reason=approved?'집행유예 종료 후 2년이 지났습니다.':'집행유예 종료 후 2년이 지나지 않았습니다.';
-      else if(/선고유예/.test(v))reason=approved?'선고유예 기간이 끝났습니다.':'선고유예 기간 중입니다.';
-      else if(approved)reason='제시된 사실 자체는 의료법 제8조의 결격사유가 아닙니다.';
-      return `${approved?'승인':'반려'}: ${v}. ${reason} ${basis}`;
-    }
+
     return `${approved?'승인':'반려'}: ${selected[field]===''?'신청서에 필수 요건이 제시되지 않았습니다.':stated} ${basis}`;
   }
   if(approved) return `승인: ${stated} 법정 기준에 맞습니다.`;
