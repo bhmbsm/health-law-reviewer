@@ -47,3 +47,19 @@ export async function buildQuestionBank(shared:{payload:unknown}[],saved:Case[]=
   if(seen.has(key))return false;seen.add(key);return true;
  });
 }
+
+/** Student headings describe the task, never the tested condition or answer. */
+export function studentCaseTitle(item:Pick<Case,'law'|'article'>):string{
+ const article=item.article?.match(/^제(\d+)조(?:의(\d+))?/);
+ const key=article?article[1]+(article[2]?'-'+article[2]:''):'';
+ if(item.law==='의료법'){
+  const titles:Record<string,string>={
+   '3-2':'의료기관 개설 심사',
+   '3-3':'종합병원 개설 심사',
+   '3-4':'상급종합병원 지정 심사',
+   '3-5':'전문병원 지정 심사'
+  };
+  if(titles[key])return titles[key];
+ }
+ return item.law+' 사례 심사';
+}
