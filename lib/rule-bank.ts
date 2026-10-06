@@ -2,6 +2,7 @@ import type * as XLSXTypes from 'xlsx';
 import type {Case} from './cases';
 import {correctKnownMedicalRule} from './medical-rule-corrections';
 import {assertLawSource} from './question-bank';
+import {insuranceLawBasis,insuranceScenario} from './insurance-explanation';
 
 export type RuleBank={kind:'rule-bank';id:string;name:string;rules:Rule[];createdAt:string};
 export type Rule={id:string;lawKey:string;law:string;article:string;title:string;difficulty:string;note:string;scenario:string;approveFacts:Record<string,unknown>[];rejectFacts:Record<string,unknown>[];factLabels:Record<string,string>;factOrder:string[];changedField:string;source:string;lawText:string;approveBody:string;rejectBody:string;judgmentBasis?:string;auditVersion?:number};
@@ -69,8 +70,9 @@ return result;
 const formatLawText=(value:string)=>value.replace(/\r\n/g,'\n').trim();
 const displayValue=(value:unknown)=>Array.isArray(value)?value.join(', '):String(value);
 const topicParticle=(word:unknown)=>{const normalized=text(word);const code=normalized.charCodeAt(normalized.length-1);return code>=0xac00&&code<=0xd7a3&&(code-0xac00)%28!==0?'은':'는';};
-const factSentence=(key:string,value:unknown,label:string)=>{
+const factSentence=(key:string,value:unknown,label:string,law='')=>{
   const shown=displayValue(value);
+  if(law.startsWith('국민건강보험법'))return `${label}: ${shown}.`;
   if(key==='duty_inpatients') return `현재 입원환자는 ${shown}명입니다.`;
   if(key==='inpatients') return label==='현재 입원환자 수'?`현재 입원환자는 ${shown}명입니다.`:`연평균 1일 입원환자는 ${shown}명입니다.`;
   if(key==='outpatients') return `연평균 1일 외래환자는 ${shown}명입니다.`;
@@ -103,12 +105,12 @@ const renderTemplate=(template:string,selected:Record<string,unknown>)=>template
   if(!(key in selected))throw Error(`사례 틀에 연결되지 않은 필드가 있습니다: ${key}`);
   return displayValue(selected[key]??'');
 }).replace(/\s{2,}/g,' ').trim();
-const caseBody=(rule:Rule,selected:Record<string,unknown>)=>renderTemplate(rule.scenario||'제출된 신청 내용을 검토해 승인 또는 반려를 결정하세요.',selected);
-const facts=(value:Record<string,unknown>,labels:Record<string,string>={},order:string[]=[],scenario='')=>Object.entries(value).sort(([a],[b])=>{const ai=order.indexOf(a),bi=order.indexOf(b);return (ai<0?Number.MAX_SAFE_INTEGER:ai)-(bi<0?Number.MAX_SAFE_INTEGER:bi);}).filter(([key,item])=>item!==''&&item!==null&&item!==undefined&&!scenario.includes(`{${key}}`)).flatMap(([key,item])=>{
+const caseBody=(rule:Rule,selected:Record<string,unknown>)=>renderTemplate(insuranceScenario(rule)||'제출된 신청 내용을 검토해 승인 또는 반려를 결정하세요.',selected);
+const facts=(value:Record<string,unknown>,labels:Record<string,string>={},order:string[]=[],scenario='',law='')=>Object.entries(value).sort(([a],[b])=>{const ai=order.indexOf(a),bi=order.indexOf(b);return (ai<0?Number.MAX_SAFE_INTEGER:ai)-(bi<0?Number.MAX_SAFE_INTEGER:bi);}).filter(([key,item])=>item!==''&&item!==null&&item!==undefined&&!scenario.includes(`{${key}}`)).flatMap(([key,item])=>{
   const shown=displayValue(item);
   if(['document_items','consent_items'].includes(key))return shown.split(' / ').map((part,i)=>`${i+1}. ${part}`);
   const label=labels[key]&&!/^[a-z_0-9]+$/i.test(labels[key])?labels[key]:'제출 사항';
-  return [factSentence(key,item,label)];
+  return [factSentence(key,item,label,law)];
 });
 const caseExplanation=(rule:Rule,selected:Record<string,unknown>,approved:boolean)=>{
   // Older stored banks predate changedField. Recover it only when one fact differs.
@@ -129,9 +131,10 @@ const caseExplanation=(rule:Rule,selected:Record<string,unknown>,approved:boolea
     const minimum=calculateStaffMinimum(inpatients,outpatients,divisor);
     return `${approved?'승인':'반려'}: 입원환자 ${inpatients}명 ÷ ${divisor/3} + 외래환자 ${outpatients}명 ÷ ${divisor}의 합을 마지막에 올림하면 최소 ${minimum}명입니다. 제시된 ${selected[field]}명은 ${approved?'정확한 최소 인원입니다.':'최소 인원 계산과 다릅니다. 더 많이 배치할 수 있는지와 최소 인원 계산은 구분해야 합니다.'}`;
   }
-  const stated=factSentence(field,selected[field],label);
-  if(rule.judgmentBasis){
-    const basis=rule.judgmentBasis;
+  const stated=factSentence(field,selected[field],label,rule.law);
+  const judgmentBasis=rule.judgmentBasis||insuranceLawBasis(rule);
+  if(judgmentBasis){
+    const basis=judgmentBasis;
     if(!approved&&['document_items','consent_items','departments'].includes(field)){
       const split=(v:unknown)=>displayValue(v??'').split(field==='departments'?', ':' / ');
       const required=split(pass[field]),submitted=split(selected[field]);
@@ -154,7 +157,7 @@ const caseExplanation=(rule:Rule,selected:Record<string,unknown>,approved:boolea
   const range=typeof passValue==='string'?passValue.match(/^RAND_INT:(\d+):(\d+):(\d+)$/):null;
   if(field==='bed_count'&&range)return `반려: ${stated} 최소 병상 기준은 ${range[1]}병상입니다.`;
   const standardValue=typeof passValue==='string'&&passValue.startsWith('RAND_CHOICE:')?passValue.slice(12).split(':').join(' 또는 '):range?`${range[1]}~${range[2]}`:passValue;
-  const standard=factSentence(field,standardValue,label);
+  const standard=factSentence(field,standardValue,label,rule.law);
   return `반려: ${stated} 법정 기준은 ${standard}`;
 };
 
@@ -215,7 +218,7 @@ export function makeRuleCase(bank:RuleBank,rule:Rule,approved:boolean,index=0):C
   const corrected=correctKnownMedicalRule(rule);if(!corrected)throw Error('판정이 중첩되는 기존 의료법 규칙은 출제하지 않습니다.');rule=corrected;
   assertLawSource(rule.law,rule.source||'');
   const selected=materializeFacts((approved?rule.approveFacts:rule.rejectFacts)[index]);
-  const item:Case={id:`${rule.id}:${approved?'approve':'reject'}:${index}`,law:rule.law,article:rule.article,title:rule.title,sender:'보건법규 심사 접수실',body:caseBody(rule,selected),details:facts(selected,rule.factLabels,rule.factOrder,rule.scenario),answer:approved,explanation:caseExplanation(rule,selected,approved),rule:rule.lawText||rule.article,chapter:0,difficulty:rule.difficulty==='쉬움'?'기초':rule.difficulty==='어려움'?'심화':'응용',source:rule.source,origin:`자동출제 규칙 · ${bank.name}`};
+  const item:Case={id:`${rule.id}:${approved?'approve':'reject'}:${index}`,law:rule.law,article:rule.article,title:rule.title,sender:'보건법규 심사 접수실',body:caseBody(rule,selected),details:facts(selected,rule.factLabels,rule.factOrder,rule.scenario,rule.law),answer:approved,explanation:caseExplanation(rule,selected,approved),rule:rule.lawText||rule.article,chapter:0,difficulty:rule.difficulty==='쉬움'?'기초':rule.difficulty==='어려움'?'심화':'응용',source:rule.source,origin:`자동출제 규칙 · ${bank.name}`};
   if(/RAND_|STAFF_MIN|DUTY_MIN|ROLE_OF|OMIT|\{[a-z_]+\}/.test([item.body,...item.details,item.explanation].join(' ')))throw Error('처리되지 않은 출제 규칙이 화면 문장에 남았습니다.');
   return Object.values(selected).length?Object.assign(item,{ruleGeneration:{name:bank.name,rule,index}}):item;
 }
