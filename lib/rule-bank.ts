@@ -106,7 +106,29 @@ const renderTemplate=(template:string,selected:Record<string,unknown>)=>template
   if(!(key in selected))throw Error(`사례 틀에 연결되지 않은 필드가 있습니다: ${key}`);
   return displayValue(selected[key]??'');
 }).replace(/\s{2,}/g,' ').trim();
-const caseBody=(rule:Rule,selected:Record<string,unknown>)=>renderTemplate(insuranceScenario(rule)||'제출된 신청 내용을 검토해 승인 또는 반려를 결정하세요.',selected);
+// Older spreadsheets sometimes wrote the authority directly in the scenario as well
+// as in a fact field.  Replace that stale authority with the selected value before
+// rendering so a question can never say "I am the Minister" and then submit "Mayor".
+const authorityScenario=(rule:Rule,selected:Record<string,unknown>)=>{
+  let scenario=insuranceScenario(rule)||'제출된 신청 내용을 검토해 승인 또는 반려를 결정하세요.';
+  for(const [key,label] of Object.entries(rule.factLabels||{})){
+    if(!/(주체|권한|직책|지정권자|명령권자|담당.?기관|신고.?기관)/.test(label))continue;
+    const selectedValue=text(selected[key]);
+    if(!selectedValue)continue;
+    // Include the common public authorities as well.  Some legacy rows listed
+    // only the currently selected value in their fact arrays while hard-coding
+    // another authority in the scenario sentence.
+    const candidates=new Set([
+      ...rule.approveFacts,...rule.rejectFacts
+    ].map(f=>text(f[key])).filter(Boolean));
+    ['보건복지부장관','질병관리청장','시·도지사','시도지사','시장','군수','구청장','보건소장'].forEach(value=>candidates.add(value));
+    for(const candidate of candidates){
+      if(candidate!==selectedValue&&scenario.includes(candidate))scenario=scenario.split(candidate).join(selectedValue);
+    }
+  }
+  return scenario;
+};
+const caseBody=(rule:Rule,selected:Record<string,unknown>)=>renderTemplate(authorityScenario(rule,selected),selected);
 const facts=(value:Record<string,unknown>,labels:Record<string,string>={},order:string[]=[],scenario='',law='')=>Object.entries(value).sort(([a],[b])=>{const ai=order.indexOf(a),bi=order.indexOf(b);return (ai<0?Number.MAX_SAFE_INTEGER:ai)-(bi<0?Number.MAX_SAFE_INTEGER:bi);}).filter(([key,item])=>item!==''&&item!==null&&item!==undefined&&!scenario.includes(`{${key}}`)).flatMap(([key,item])=>{
   const shown=displayValue(item);
   if(['document_items','consent_items'].includes(key))return shown.split(' / ').map((part,i)=>`${i+1}. ${part}`);

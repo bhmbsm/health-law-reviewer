@@ -28,3 +28,12 @@ test('single-use-device grounds retain the injury distinction between suspension
  const severe=studentFact('제4조제6항을 위반하여 사람의 생명 또는 신체에 중대한 위해를 발생하게 한 경우','의료법');
  assert.match(ordinary,/일회용 의료기기/);assert.doesNotMatch(ordinary,/중대한 위해/);assert.match(severe,/중대한 위해/);
 });
+test('a hard-coded authority in an old scenario is synchronized with the selected authority fact',()=>{
+ const authorityRule={...rule,id:'authority-regression',article:'제59조',title:'업무개시 명령',
+  scenario:'저는 보건복지부장관입니다. 집단 휴업한 의료기관 개설자에게 업무개시 명령을 내려도 될까요?',
+  approveFacts:[{order_authority:'시장'}],rejectFacts:[{order_authority:'보건소장'}],changedField:'order_authority',
+  factLabels:{order_authority:'명령을 내리려는 직책'},factOrder:['order_authority']};
+ const [approved,rejected]=makeRuleCases([{name:'의료법',rules:[authorityRule]}]);
+ assert.match(approved.body,/저는 시장입니다/);assert.doesNotMatch(approved.body,/보건복지부장관입니다/);
+ assert.match(rejected.body,/저는 보건소장입니다/);assert.doesNotMatch(rejected.body,/보건복지부장관입니다/);
+});
