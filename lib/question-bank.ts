@@ -63,3 +63,8 @@ export function studentCaseTitle(item:Pick<Case,'law'|'article'>):string{
  }
  return item.law+' 사례 심사';
 }
+
+/** Learning categories may combine laws; their source names and original text stay intact. */
+export function lawCategory(law=''):string{
+ return ['간호법','간호법시행령','간호법시행규칙'].includes(law.replace(/\s/g,''))?'의료법':law;
+}
