@@ -12,7 +12,7 @@ test('GET recovers from a transient network failure',async()=>{
 });
 test('persistent GET failures show Korean guidance without a raw browser exception',async()=>{
   let calls=0;
-  await mockFetch(async()=>{calls++;throw new TypeError('Failed to fetch');},async()=>assert.rejects(requestNudgeJSON('GET','token'),error=>error.message.includes('학습은 계속')&&!error.message.includes('Failed to fetch')));
+  await mockFetch(async()=>{calls++;throw new TypeError('Failed to fetch');},async()=>assert.rejects(requestNudgeJSON('GET','token'),error=>error.message.includes('인터넷 연결')&&!error.message.includes('Failed to fetch')));
   assert.equal(calls,2);
 });
 test('POST is never retried when delivery status is unknown',async()=>{
