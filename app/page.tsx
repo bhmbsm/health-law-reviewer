@@ -3,7 +3,6 @@ import {useEffect,useRef,useState} from 'react';
 import {BookOpen,LayoutDashboard,Waypoints,Files,RotateCcw,ChartNoAxesCombined,Library,Flame,ArrowRight,Check,X,ShieldCheck,ChevronRight,Download,Upload,CheckCircle2,Stamp,Scale,ArrowLeft,Share2,Heart,Target,UserRound} from 'lucide-react';
 import {cases as initialCases,chapters,type Case} from '../lib/cases';
 import {isRuleBank,makeRuleCases,parseRuleBank,refreshRuleCase,type RuleBank} from '../lib/rule-bank';
-import {emergencyRuleBank} from '../lib/emergency-rule-bank';
 import StoryCampaign from '../components/story/StoryCampaign';
 import InstallGuide from '../components/pwa/InstallGuide';
 import NotificationButton from '../components/pwa/NotificationButton';
@@ -31,7 +30,7 @@ const startTime=useRef(Date.now()),requestId=useRef(''),fileRef=useRef<HTMLInput
 const mergeBank=(shared:any[],saved:Case[]=[],localRuleBanks:RuleBank[]=[])=>{
 const sharedRules=shared.map((x:any)=>x.payload).filter(isRuleBank) as RuleBank[];
 const sharedCases=shared.map((x:any)=>x.payload).filter((x:any)=>!isRuleBank(x)) as Case[];
-const candidates=[...saved,...sharedCases,...makeRuleCases([emergencyRuleBank,...localRuleBanks,...sharedRules])];
+const candidates=[...saved,...sharedCases,...makeRuleCases([...localRuleBanks,...sharedRules])];
 const seenIds=new Set<string>();
 return candidates.filter(c=>{if(seenIds.has(c.id))return false;seenIds.add(c.id);return true;});
 };
