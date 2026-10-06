@@ -46,6 +46,8 @@ test('Korean workbook names have stable, separate storage ids',async()=>{
 test('a question cannot display an unrelated law source or unresolved tokens',()=>{
  assert.throws(()=>assertReadyCase({id:'x',law:'응급의료에 관한 법률',source:rule.source,body:'사례',details:[],explanation:''}),/법령명/);
  assert.throws(()=>assertReadyCase({id:'x',law:'의료법',source:rule.source,body:'저는 {performer_type}',details:[],explanation:''}),/변수/);
+ for(const slot of ['title','body','explanation'])assert.throws(()=>assertReadyCase({id:'x',law:'의료법',source:rule.source,title:'제목',body:'사례',details:[],explanation:'해설',[slot]:'Rand_choice:문장'}),/변수/);
+ assert.throws(()=>assertReadyCase({id:'x',law:'의료법',source:rule.source,body:'사례',details:['위반 행위는 RAND_CHOICE:시정명령 불이행입니다.'],explanation:''}),/변수/);
 });
 
 test('legacy randomized minimum beds explain the legal threshold without a RAND token',()=>{
