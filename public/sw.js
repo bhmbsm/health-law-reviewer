@@ -1,4 +1,4 @@
-const CACHE = 'law-review-shell-v6';
+const CACHE = 'law-review-shell-v7';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -6,7 +6,24 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim()));
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    const oldShells = keys.filter(key => key.startsWith('law-review-shell-') && key !== CACHE);
+    await Promise.all(oldShells.map(key => caches.delete(key)));
+    await self.clients.claim();
+    // One-time migration: old tabs have no update listener and can keep running
+    // the pre-validation generator indefinitely. Reload them after taking over.
+    // Only shell caches are removed; login and saved learning records are kept.
+    if (oldShells.length) {
+      const windows = await self.clients.matchAll({type:'window',includeUncontrolled:true});
+      await Promise.all(windows.map(async client => {
+        const url = new URL(client.url);
+        if (url.origin !== self.location.origin) return;
+        url.searchParams.set('app_update', 'v7');
+        try { await client.navigate(url.href); } catch {}
+      }));
+    }
+  })());
 });
 
 self.addEventListener('fetch', (event) => {
@@ -22,7 +39,7 @@ self.addEventListener('fetch', (event) => {
   }
   // Never substitute a cached HTML page for a script, image, or an RSC response.
   if(event.request.mode!=='navigate')return;
-  event.respondWith(fetch(event.request).then(response=>{
+  event.respondWith(fetch(event.request, {cache:'no-store'}).then(response=>{
     if(response.ok)event.waitUntil(caches.open(CACHE).then(cache=>cache.put(event.request,response.clone())));
     return response;
   }).catch(()=>caches.match(event.request).then(cached=>cached||caches.match('/'))));
