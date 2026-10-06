@@ -1,4 +1,5 @@
 import type { Case } from './cases';
+import {shuffle} from './question-bank';
 import { refreshRuleCase } from './rule-bank';
 
 export type StoryStats = { judgment: number; trust: number };
@@ -38,7 +39,7 @@ export function randomChapterCases(bank: Case[], chapterIndex: number, attempted
   if (!law) return [];
   const pool = bank.filter((item) => item.law === law);
   const unanswered = pool.filter((item) => !attemptedIds.has(item.id));
-  return (unanswered.length ? unanswered : pool).sort(() => Math.random() - 0.5).slice(0, 12).map(refreshRuleCase);
+  return shuffle(unanswered.length ? unanswered : pool).slice(0, 12).map(refreshRuleCase);
 }
 
 export function applyStoryResult(stats: StoryStats, correct: boolean): StoryStats {
