@@ -41,9 +41,9 @@ export function randomChapterCases(bank: Case[], chapterIndex: number, attempted
   const unanswered = pool.filter((item) => !attemptedIds.has(item.id));
   const available = unanswered.length ? unanswered : pool;
   const completed = pool.filter((item) => attemptedIds.has(item.id)).length;
-  // Across consecutive assignments: six ordinary cases for each penalty case.
-  // A 12-case assignment therefore contains one or two penalty cases.
-  const penaltyTarget = Math.floor((completed + 12) / 7) - Math.floor(completed / 7);
+  // Across consecutive assignments: ten ordinary cases for each penalty case.
+  // A 12-case assignment usually contains one penalty case.
+  const penaltyTarget = Math.floor((completed + 12) / 11) - Math.floor(completed / 11);
   const ordinary = available.filter((item) => caseSelectionWeight(item) === 1);
   const penalties = available.filter((item) => caseSelectionWeight(item) < 1);
   const selectedPenalties = selectRandomCases(penalties, penaltyTarget);
