@@ -1,5 +1,5 @@
 import type { Case } from './cases';
-import {shuffle,lawCategory} from './question-bank';
+import {shuffle,lawCategory,caseSelectionWeight,selectRandomCases} from './question-bank';
 import { refreshRuleCase } from './rule-bank';
 
 export type StoryStats = { judgment: number; trust: number };
@@ -39,7 +39,17 @@ export function randomChapterCases(bank: Case[], chapterIndex: number, attempted
   if (!law) return [];
   const pool = bank.filter((item) => lawCategory(item.law) === law);
   const unanswered = pool.filter((item) => !attemptedIds.has(item.id));
-  return shuffle(unanswered.length ? unanswered : pool).slice(0, 12).map(refreshRuleCase);
+  const available = unanswered.length ? unanswered : pool;
+  const completed = pool.filter((item) => attemptedIds.has(item.id)).length;
+  // Across consecutive assignments: six ordinary cases for each penalty case.
+  // A 12-case assignment therefore contains one or two penalty cases.
+  const penaltyTarget = Math.floor((completed + 12) / 7) - Math.floor(completed / 7);
+  const ordinary = available.filter((item) => caseSelectionWeight(item) === 1);
+  const penalties = available.filter((item) => caseSelectionWeight(item) < 1);
+  const selectedPenalties = selectRandomCases(penalties, penaltyTarget);
+  const selectedOrdinary = selectRandomCases(ordinary, 12 - selectedPenalties.length);
+  // Exhausted ordinary questions must not turn the chapter into a penalty-only set.
+  return shuffle([...selectedOrdinary, ...selectedPenalties]).map(refreshRuleCase);
 }
 
 export function applyStoryResult(stats: StoryStats, correct: boolean): StoryStats {
