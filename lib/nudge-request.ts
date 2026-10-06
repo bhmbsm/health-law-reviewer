@@ -13,7 +13,7 @@ export async function requestNudgeJSON(method:'GET'|'POST',token:string,recipien
     }catch{
       if(signal?.aborted)throw new DOMException('Aborted','AbortError');
       if(index+1<attempts)continue;
-      throw Error(method==='GET'?'친구 알림 연결이 잠시 끊겼습니다. 인터넷 연결을 확인한 뒤 다시 시도하세요. 학습은 계속할 수 있습니다.':'전송 결과를 확인하지 못했습니다. 친구 목록을 새로고침해 오늘 보냄 여부를 확인하세요.');
+      throw Error(method==='GET'?'친구 알림 연결이 잠시 끊겼습니다. 인터넷 연결을 확인한 뒤 다시 시도하세요.':'전송 결과를 확인하지 못했습니다. 친구 목록을 새로고침해 오늘 보냄 여부를 확인하세요.');
     }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
     const result=await response.json().catch(()=>null);
     if(!response.ok){
