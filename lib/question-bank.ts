@@ -7,10 +7,10 @@ export function shuffle<T>(items:readonly T[],random= Math.random):T[]{
  for(let i=result.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[result[i],result[j]]=[result[j],result[i]];}
  return result;
 }
-/** Penalty nodes remain available but receive half the draw weight of other Medical Act nodes. */
+/** Penalty nodes remain available but receive one tenth the draw weight of other Medical Act nodes. */
 export function caseSelectionWeight(item:Pick<Case,'law'|'article'>):number{
  const article=item.article?.match(/^(?:의료법\s*)?제(\d+)조/);
- return item.law==='의료법'&&article&&Number(article[1])>=87&&Number(article[1])<=92?0.5:1;
+ return item.law==='의료법'&&article&&Number(article[1])>=87&&Number(article[1])<=92?0.1:1;
 }
 export function selectRandomCases(items:Case[],limit=5,random=Math.random):Case[]{
  const groups=new Map<string,Case[]>();
