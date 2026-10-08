@@ -98,12 +98,25 @@ export function studentFact(value:unknown,law:string):unknown{
  if(expanded.length===options.length&&expanded.every((x,i)=>x===options[i]))return value;
  return expanded.length>1?'RAND_CHOICE:'+expanded.join(':'):expanded[0];
 }
+const injuryOutcomes:Record<string,string>={
+ 'ML-A87-2-INJURY-001':'그 행위로 피해자가 상해를 입었습니다. 중상해나 사망에 이르지는 않았습니다.',
+ 'ML-A87-2-SERIOUS-INJURY-001':'그 행위로 피해자가 중상해를 입었습니다.',
+ 'ML-A87-2-DEATH-001':'그 행위로 피해자가 사망했습니다.'
+};
+/** Repair the exact legacy template which omitted the fixed injury outcome. */
+export function injuryScenario(rule:Rule):string{
+ const outcome=injuryOutcomes[rule.id];
+ const legacy='{act_text} 이 일에 적용되는 법정형을 “{penalty_text}”으로 안내받았습니다. 이 안내가 맞을까요?';
+ if(rule.law!=='의료법'||!outcome||rule.scenario!==legacy)return rule.scenario;
+ return `{act_text} ${outcome} 이 일에 적용되는 법정형을 “{penalty_text}”으로 안내받았습니다. 이 안내가 맞을까요?`;
+}
+
 /** Expand only student-facing facts and prose. Source text, references and answers stay intact. */
 export function studentRule(rule:Rule):Rule{
  const facts=(rows:Record<string,unknown>[])=>rows.map(row=>Object.fromEntries(Object.entries(row).map(([k,v])=>[k,studentFact(v,rule.law)])));
  // Legacy copies baked the first approval into the prose while rotating the fact below it.
  const scenario=rule.id==='ML-A57-EXEMPT-001'&&rule.factLabels?.advertisement_content&&/^저는 의료기관의 장입니다\./.test(rule.scenario)&&rule.scenario.includes('만 담은 의료광고를 만들었습니다.')
   ? '저는 의료기관의 장입니다. {advertisement_content}만 담은 의료광고를 만들었습니다. 사전 심의 없이 이 광고를 해도 될까요?'
-  : rule.scenario;
+  : injuryScenario(rule);
  return {...rule,scenario:studentText(scenario,rule.law),approveFacts:facts(rule.approveFacts),rejectFacts:facts(rule.rejectFacts)};
 }
