@@ -158,3 +158,6 @@ body{background:#181918;color:#332c21}.office-scenery{position:fixed;inset:0;z-i
 @keyframes summary-card-arrive{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:750px){.summary-change-cards{grid-template-columns:1fr}.summary-change-card{padding:13px 15px}.document.case-filed .document-body h1{padding-right:100px}.document-body>.ink-stamp{top:72px;right:17px}.story-ink-stamp{right:17px}.story-case-document h2{padding-right:105px}}
 @media(prefers-reduced-motion:reduce){.summary-change-card{animation:none!important;opacity:1!important;transform:none!important}.story-exp-track span,.summary-change-track span{transition:none!important}}
+
+/* Preserve authored case lists and short explanation lines in both study modes. */
+.case-body,.story-case-document>p,.story-feedback p,.result-copy p,.bank-detail p{white-space:pre-line;overflow-wrap:anywhere}

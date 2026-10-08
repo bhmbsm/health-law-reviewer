@@ -5,6 +5,7 @@ import {assertLawSource} from './question-bank';
 import {insuranceLawBasis,insuranceScenario} from './insurance-explanation';
 import {studentRule} from './student-scenario';
 import {restoreInsuranceNarrative} from './insurance-narrative-migration';
+import {numberedScenario,numberedItems,compactExplanation,hospitalExplanation,insuranceExplanation} from './case-readability';
 
 export type RuleBank={kind:'rule-bank';id:string;name:string;rules:Rule[];createdAt:string};
 export type Rule={id:string;lawKey:string;law:string;article:string;title:string;difficulty:string;note:string;scenario:string;approveFacts:Record<string,unknown>[];rejectFacts:Record<string,unknown>[];factLabels:Record<string,string>;factOrder:string[];changedField:string;source:string;lawText:string;approveBody:string;rejectBody:string;judgmentBasis?:string;auditVersion?:number;embeddedFactKeys?:string[];caseExpressions?:Record<string,string>};
@@ -107,7 +108,7 @@ const factSentence=(key:string,value:unknown,label:string,law='')=>{
 const renderTemplate=(template:string,selected:Record<string,unknown>,expressions?:Record<string,string>)=>template.replace(/\{([a-zA-Z_][a-zA-Z_0-9]*)\}([”’"']?)(?:(으로|로|이라는|라는|은|는|이|가|을|를)(?=\s|[,.?!]|$))?/g,(_,key,quote,particle)=>{
   if(!(key in selected))throw Error(`사례 틀에 연결되지 않은 필드가 있습니다: ${key}`);
   const raw=displayValue(selected[key]??'');
-  const shown=expressions?.[raw]??raw;
+  const shown=['document_items','consent_items'].includes(key)?numberedItems(raw):(expressions?.[raw]??raw);
   if(!expressions||!particle)return shown+quote+(particle||'');
   const ending=shown.trim().replace(/\([^)]*\)$/, '').trim().slice(-1);
   const digitEnds=['영','일','이','삼','사','오','육','칠','팔','구'];
@@ -119,7 +120,7 @@ const renderTemplate=(template:string,selected:Record<string,unknown>,expression
     particle==='은'||particle==='는'?(final?'은':'는'):
     particle==='이'||particle==='가'?(final?'이':'가'):(final?'을':'를');
   return shown+quote+suffix;
-}).replace(/\s{2,}/g,' ').trim();
+}).replace(/[ \t]{2,}/g,' ').trim();
 // Older spreadsheets sometimes wrote the authority directly in the scenario as well
 // as in a fact field.  Replace that stale authority with the selected value before
 // rendering so a question can never say "I am the Minister" and then submit "Mayor".
@@ -143,7 +144,11 @@ const authorityScenario=(rule:Rule,selected:Record<string,unknown>)=>{
   }
   return scenario;
 };
-const caseBody=(rule:Rule,selected:Record<string,unknown>)=>renderTemplate(authorityScenario(rule,selected),selected,rule.caseExpressions);
+const caseBody=(rule:Rule,selected:Record<string,unknown>)=>{
+  let scenario=authorityScenario(rule,selected);
+  if(selected.training==='')scenario=scenario.replace(/^\s*\d+\.\s*/gm,'').split(/(?<=[가-힣”"')\]}][.!?。])\s+/u).filter(sentence=>!sentence.includes('{training}')).join(' ');
+  return renderTemplate(numberedScenario(scenario),selected,rule.caseExpressions);
+};
 const facts=(value:Record<string,unknown>,labels:Record<string,string>={},order:string[]=[],scenario='',law='',embeddedFactKeys:string[]=[])=>Object.entries(value).sort(([a],[b])=>{const ai=order.indexOf(a),bi=order.indexOf(b);return (ai<0?Number.MAX_SAFE_INTEGER:ai)-(bi<0?Number.MAX_SAFE_INTEGER:bi);}).filter(([key,item])=>item!==''&&item!==null&&item!==undefined&&!scenario.includes(`{${key}}`)&&!embeddedFactKeys.includes(key)).flatMap(([key,item])=>{
   const shown=displayValue(item);
   if(['document_items','consent_items'].includes(key))return shown.split(' / ').map((part,i)=>`${i+1}. ${part}`);
@@ -151,10 +156,15 @@ const facts=(value:Record<string,unknown>,labels:Record<string,string>={},order:
   return [factSentence(key,item,label,law)];
 });
 const caseExplanation=(rule:Rule,selected:Record<string,unknown>,approved:boolean)=>{
+  const hospital=hospitalExplanation(rule,selected,approved);if(hospital)return hospital;
+  const insurance=insuranceExplanation(rule,selected,approved);if(insurance)return insurance;
+  if(rule.changedField==='training'&&selected.training==='')return '반려: 전문의가 되려는 사람을 수련시키는 기관이라는 필수 요건이 제시되지 않았습니다.';
   // Older stored banks predate changedField. Recover it only when one fact differs.
   const pass=rule.approveFacts[0]||{},reject=rule.rejectFacts[0]||{};
   const differences=Object.keys({...pass,...reject}).filter(key=>!same(pass[key],reject[key]));
   const field=text(rule.changedField)||(rule.approveFacts.length&&rule.rejectFacts.length&&differences.length===1?differences[0]:'');
+  if(approved&&['document_items','consent_items'].includes(field))return '승인: 이 사례에 적용되는 법정 필수항목이 모두 포함되어 있습니다.';
+  if(rule.id==='EM-A45-USE-001')return approved?'승인: 제시한 용도는 법에 명시된 구급차 사용 용도에 해당합니다.':'반려: 혈액·검사대상물·진료용 장비 운반 대신 구호물자 운반을 넣었습니다. 이 문항에서 묻는 명시적 용도 목록과 다릅니다.';
   if(!field)return `${approved?'승인':'반려'}: ${text(rule.note)||'제출된 사실과 법령 원문의 판단 기준을 확인하세요.'}`;
   const label=rule.factLabels?.[field]||field;
   const duty=dutyToken(pass[field]);
@@ -186,11 +196,11 @@ const caseExplanation=(rule:Rule,selected:Record<string,unknown>,approved:boolea
   const judgmentBasis=rule.judgmentBasis||insuranceLawBasis(rule);
   if(judgmentBasis){
     const basis=judgmentBasis;
-    if(!approved&&['document_items','consent_items','departments'].includes(field)){
+    if(!approved&&['document_items','consent_items'].includes(field)){
       const split=(v:unknown)=>displayValue(v??'').split(field==='departments'?', ':' / ');
       const required=split(pass[field]),submitted=split(selected[field]);
       const missing=required.filter(x=>!submitted.includes(x));const added=submitted.filter(x=>!required.includes(x));
-      return `반려: ${missing.length?`필수사항 “${missing.join('”, “')}”이 빠졌습니다.`:'법정 필수사항과 다릅니다.'}${added.length?` 대신 들어간 “${added.join('”, “')}”은 빠진 필수사항을 대신하지 못합니다.`:''} ${basis}`;
+      return `반려: ${missing.length?`필수사항 “${missing.join('”, “')}”이 빠졌습니다.`:'법정 필수사항과 다릅니다.'}${added.length?` 대신 들어간 “${added.join('”, “')}”은 빠진 필수사항을 대신하지 못합니다.`:''}`;
     }
 
     return `${approved?'승인':'반려'}: ${selected[field]===''?'신청서에 필수 요건이 제시되지 않았습니다.':stated} ${basis}`;
@@ -273,8 +283,9 @@ export function makeRuleCase(bank:RuleBank,rule:Rule,approved:boolean,index=0):C
   const corrected=correctKnownMedicalRule(rule);if(!corrected)throw Error('판정이 중첩되는 기존 의료법 규칙은 출제하지 않습니다.');rule=corrected;
   assertLawSource(rule.law,rule.source||'');
   rule=studentRule(restoreInsuranceNarrative(rule));
+  rule={...rule,scenario:numberedScenario(rule.scenario,rule)};
   const selected=materializeFacts((approved?rule.approveFacts:rule.rejectFacts)[index]);
-  const item:Case={id:`${rule.id}:${approved?'approve':'reject'}:${index}`,law:rule.law,article:rule.article,title:rule.title,sender:'보건법규 심사 접수실',body:caseBody(rule,selected),details:facts(selected,rule.factLabels,rule.factOrder,rule.scenario,rule.law,rule.embeddedFactKeys),answer:approved,explanation:caseExplanation(rule,selected,approved),rule:rule.lawText||rule.article,chapter:0,difficulty:rule.difficulty==='쉬움'?'기초':rule.difficulty==='어려움'?'심화':'응용',source:rule.source,origin:`자동출제 규칙 · ${bank.name}`};
+  const item:Case={id:`${rule.id}:${approved?'approve':'reject'}:${index}`,law:rule.law,article:rule.article,title:rule.title,sender:'보건법규 심사 접수실',body:caseBody(rule,selected),details:facts(selected,rule.factLabels,rule.factOrder,rule.scenario,rule.law,rule.embeddedFactKeys),answer:approved,explanation:compactExplanation(caseExplanation(rule,selected,approved)),rule:rule.lawText||rule.article,chapter:0,difficulty:rule.difficulty==='쉬움'?'기초':rule.difficulty==='어려움'?'심화':'응용',source:rule.source,origin:`자동출제 규칙 · ${bank.name}`};
   if(/RAND_|STAFF_MIN|DUTY_MIN|ROLE_OF|OMIT|\{[a-z_]+\}/.test([item.body,...item.details,item.explanation].join(' ')))throw Error('처리되지 않은 출제 규칙이 화면 문장에 남았습니다.');
   return Object.values(selected).length?Object.assign(item,{ruleGeneration:{name:bank.name,rule,index}}):item;
 }
@@ -284,4 +295,5 @@ export function refreshRuleCase(item:Case):Case{
   return generation?makeRuleCase({name:generation.name} as RuleBank,generation.rule,item.answer,generation.index):item;
 }
 export function makeRuleCases(banks:RuleBank[]):Case[]{return banks.flatMap(bank=>bank.rules.flatMap(raw=>{const rule=correctKnownMedicalRule(raw);return rule?[...rule.approveFacts.map((_,index)=>makeRuleCase(bank,rule,true,index)),...rule.rejectFacts.map((_,index)=>makeRuleCase(bank,rule,false,index))]:[];}));}
+
 
