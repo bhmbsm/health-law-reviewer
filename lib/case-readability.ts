@@ -25,7 +25,7 @@ export function numberedItems(value:string):string {
 
 export function compactExplanation(value:string):string {
  const clean=value.replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim();
- return clean.split(/(?<=[가-힣”"')\]][.!?。])\s+/u).slice(0,3).join('\n');
+ return clean.split(/(?<=[가-힣”"')\]][.!?。])\s+/u).join('\n');
 }
 
 /** Do not append the entire law to a selected insurance variant. */
@@ -58,5 +58,5 @@ export function hospitalExplanation(rule:Rule,selected:Record<string,unknown>,ap
  if(!has('진단검사의학과')&&!has('병리과'))reasons.push('진단검사의학과 또는 병리과 중 하나가 있어야 하지만, 둘 다 없습니다.');
  if(approved)return `승인: ${beds}병상이고 진료과목은 ${count}개로, 병상·전체 과목 수·필수 과목 요건을 충족합니다.`;
  if(!reasons.length)return; // Preserve unrelated answer rules rather than inventing a reason.
- return reasons.slice(0,3).map((s,i)=>(i===0?'반려: ':'')+s).join('\n');
+ return reasons.map((s,i)=>(i===0?'반려: ':'')+s).join('\n');
 }
