@@ -1,4 +1,4 @@
-export type StudyRecord = {id:string; user_id:string; case_id:string; mode:string; correct:boolean; choice:boolean; hint:boolean; duration:number; created:string};
+export type StudyRecord = {id:string; user_id:string; case_id:string; mode:string; correct:boolean; choice:boolean|null; hint:boolean; duration:number; created:string};
 export type StudyProfile = {id:string; nickname:string; group_code:string|null};
 export const studyModes:Record<string,string> = {story:'스토리 심사',free:'자유 심사',review:'오답 재심사',audit:'감사 재심사'};
 export const koreanDay = (date:string) => new Date(date).toLocaleDateString('sv-SE',{timeZone:'Asia/Seoul'});
