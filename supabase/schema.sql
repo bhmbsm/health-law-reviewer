@@ -14,8 +14,9 @@ create table if not exists public.attempts (
   case_id text not null,
   mode text not null check (mode in ('story','free','review','audit')),
   chapter integer not null check (chapter between 0 and 4),
-  choice boolean not null,
+  choice boolean, -- NULL means the learner chose 모르겠음.
   correct boolean not null,
+  constraint attempts_unknown_incorrect_check check (choice is not null or correct = false),
   hint boolean not null default false,
   duration integer not null check (duration between 0 and 86400),
   created timestamptz not null default now()
