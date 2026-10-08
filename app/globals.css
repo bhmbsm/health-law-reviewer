@@ -161,3 +161,20 @@ body{background:#181918;color:#332c21}.office-scenery{position:fixed;inset:0;z-i
 
 /* Preserve authored case lists and short explanation lines in both study modes. */
 .case-body,.story-case-document>p,.story-feedback p,.result-copy p,.bank-detail p{white-space:pre-line;overflow-wrap:anywhere}
+
+/* Installed-app reading preference: scales long-form learning text, not navigation. */
+:root{--reading-scale:1}
+.game-app .case-body,.game-app .story-case-document>p,.game-app .result-copy p,.game-app .story-feedback p{font-size:calc(18px * var(--reading-scale));line-height:1.85}
+.game-app .rule-text,.game-app .bank-detail p,.game-app .document-details p{font-size:calc(16px * var(--reading-scale));line-height:1.85}
+.reading-settings{position:relative;color:#eedcb2;flex-shrink:0;z-index:25}
+.reading-settings>summary{display:flex;align-items:center;gap:6px;min-height:44px;padding:8px 10px;cursor:pointer;border:1px solid #85734f;border-radius:4px;background:#35424a;font-weight:700;list-style:none}
+.reading-settings>summary::-webkit-details-marker{display:none}
+.reading-settings>summary span{font-size:12px}
+.reading-settings-panel{position:absolute;right:0;top:calc(100% + 8px);width:min(300px,88vw);padding:16px;border:1px solid #aa9564;border-radius:8px;background:#f5ead0;color:#382d20;box-shadow:0 8px 24px #0006}
+.reading-settings-panel>p{color:#62543d;font-size:13px;margin:8px 0 12px}
+.reading-size-options{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.reading-size-options button{min-height:44px;padding:6px 4px;border:1px solid #aa9564;border-radius:4px;color:#4b3c29;background:#fff7e5;font-size:13px}
+.reading-size-options button[aria-pressed=true]{background:#345748;color:#fff}
+.reading-settings-panel .reading-size-preview{line-height:1.7;border-top:1px solid #c5b58e;padding-top:12px;overflow-wrap:anywhere}
+.reading-settings-panel small{font-size:12px;color:#62543d}
+@media(max-width:750px){.reading-settings-panel{position:fixed;top:90px;right:12px;max-height:75vh;overflow-y:auto}}
