@@ -73,6 +73,12 @@ const {todayAttempts,correctCount,accuracy,xp,level,wrong,days,streak}=useMemo((
  while((days.get(day(d))||0)>=DAILY_STUDY_TARGET){streak++;d.setDate(d.getDate()-1);}
  return {todayAttempts,correctCount,accuracy:attempts.length?Math.round(correctCount/attempts.length*100):0,xp,level:Math.min(4,Math.floor(xp/100)),wrong,days,streak};
 },[attempts,bank,today]);
+// Scroll only when a new question is mounted, never when its answer is shown.
+useEffect(()=>{
+ if(!session||finished)return;
+ const frame=window.requestAnimationFrame(()=>window.scrollTo({top:0,left:0,behavior:'instant'}));
+ return()=>window.cancelAnimationFrame(frame);
+},[session?.queue,session?.index,finished]);
 const current=session?.queue[session.index];const currentDecision=current&&result!==null?(result?current.answer:!current.answer):null;
 const laws=useMemo(()=>Array.from(new Set(bank.map(c=>lawCategory(c.law)))),[bank]);
 const caseById=useMemo(()=>new Map(bank.map(c=>[c.id,c])),[bank]);
