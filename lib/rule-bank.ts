@@ -156,6 +156,17 @@ const facts=(value:Record<string,unknown>,labels:Record<string,string>={},order:
   return [factSentence(key,item,label,law)];
 });
 const caseExplanation=(rule:Rule,selected:Record<string,unknown>,approved:boolean)=>{
+  const injury:Record<string,{outcome:string;penalty:string}>={
+    'ML-A87-2-INJURY-001':{outcome:'상해(중상해·사망 제외)',penalty:'7년 이하의 징역 또는 1천만원 이상 7천만원 이하의 벌금'},
+    'ML-A87-2-SERIOUS-INJURY-001':{outcome:'중상해',penalty:'3년 이상 10년 이하의 징역'},
+    'ML-A87-2-DEATH-001':{outcome:'사망',penalty:'무기 또는 5년 이상의 징역'}
+  };
+  const outcome=injury[rule.id];
+  if(rule.law==='의료법'&&outcome&&rule.changedField==='penalty_text'
+    &&rule.approveFacts.every(f=>f.penalty_text===outcome.penalty)
+    &&rule.scenario.includes('그 행위로 피해자가')){
+    return `${approved?'승인':'반려'}: 이 위법행위로 인한 피해 결과는 ${outcome.outcome}입니다.\n법정형은 ${outcome.penalty}입니다.\n제시한 “${selected.penalty_text}”${approved?'은 이 기준과 일치합니다.':'은 이 기준과 다릅니다.'}`;
+  }
   const hospital=hospitalExplanation(rule,selected,approved);if(hospital)return hospital;
   const insurance=insuranceExplanation(rule,selected,approved);if(insurance)return insurance;
   if(rule.changedField==='training'&&selected.training==='')return '반려: 전문의가 되려는 사람을 수련시키는 기관이라는 필수 요건이 제시되지 않았습니다.';
