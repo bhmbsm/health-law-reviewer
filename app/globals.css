@@ -186,3 +186,8 @@ body{background:#181918;color:#332c21}.office-scenery{position:fixed;inset:0;z-i
 .game-app .decision-buttons .unknown span{font-size:14px}
 .game-app .decision-buttons .unknown small{display:none}
 .game-app .decision-buttons .unknown small{color:#ded4b9}
+
+.review-case-row{display:flex;align-items:center;gap:10px;border-bottom:1px solid #b8a47b;padding-right:14px}
+.review-case-row>button:first-child{flex:1;min-width:0;border-bottom:0}
+.case-list .review-case-row>.review-remove{width:auto;flex:0 0 auto;min-height:38px;padding:7px 12px;background:#efe2c2;color:#74503a;border:1px solid #aa9564;border-radius:4px;font-size:13px}
+@media(max-width:600px){.review-case-row{gap:4px;padding-right:10px}.case-list .review-case-row>.review-remove{padding:7px 10px}}
