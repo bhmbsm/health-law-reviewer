@@ -7,7 +7,7 @@ import StoryCaseDocument from './StoryCaseDocument';
 import { applyStoryResult, initialStoryStats, randomChapterCases, storyChapters, type StoryStats } from '../../lib/story';
 import { loadStoryProgress, saveStoryProgress, type StoryProgress } from '../../lib/story-progress';
 
-type Props = { userId: string | null; bank: Case[]; onExit: () => void; experience: number; storyAttemptedCaseIds: string[]; onAttempt: (item: Case, choice: boolean, correct: boolean, duration: number) => Promise<void> };
+type Props = { userId: string | null; bank: Case[]; onExit: () => void; experience: number; storyAttemptedCaseIds: string[]; onAttempt: (item: Case, choice: boolean | null, correct: boolean, duration: number) => Promise<void> };
 type Stage = 'campaign' | 'briefing' | 'case' | 'incident' | 'summary';
 
 const rankIcons = { badge: Badge, shield: Shield, badgeCheck: BadgeCheck, shieldCheck: ShieldCheck, medal: Medal, award: Award, star: Star, crown: Crown, trophy: Trophy, gem: Gem, landmark: Landmark, sparkles: Sparkles };
@@ -82,6 +82,7 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
   const [index, setIndex] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
   const [choice, setChoice] = useState<boolean | null>(null);
+  const [answerUnknown, setAnswerUnknown] = useState(false);
   const [answeredCaseId, setAnsweredCaseId] = useState<string | null>(null);
   const [incidentSeen, setIncidentSeen] = useState(false);
   const [chapterStartStats, setChapterStartStats] = useState<StoryStats>(initialStoryStats);
@@ -122,12 +123,13 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
     caseStartedAt.current = currentTimestamp();
     setStage('briefing');
   }
-  async function submit(answer: boolean) {
+  async function submit(answer: boolean | null) {
     if (!selected || choice !== null || !progress || saving) return;
-    const correct = selected.answer === answer;
+    const correct = answer !== null && selected.answer === answer;
     setSaving(true);
     try {
       await onAttempt(selected, answer, correct, Math.floor((Date.now() - caseStartedAt.current) / 1000));
+      setAnswerUnknown(answer === null);
       setAnsweredCaseId(selected.id);
       setChoice(correct);
       if (correct) setCorrectCount((n) => n + 1);
@@ -193,7 +195,7 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
     </div>
     {stage === 'campaign' && <><p>챕터 상태는 플레이 가능 여부와 문항 준비 여부로 나뉩니다.</p><div className="story-chapters">{storyChapters.map((entry, i) => { const ready = !!entry.law && bank.some((item) => lawCategory(item.law) === entry.law); const unlocked = i <= progress.unlockedThrough; const status = !ready ? '🕓 준비 중' : unlocked ? '🔓 플레이 가능' : '🔒 잠김'; const statusClass = !ready ? 'preparing' : unlocked ? 'unlocked' : 'locked'; return <article className={`panel story-chapter ${statusClass}`} key={entry.title}><div className="story-chapter-heading"><small>제{i + 1}장 · {entry.rank}</small><span className={`story-status ${statusClass}`}>{status}</span></div><h2>{entry.title}</h2><p>{ready ? `${entry.law} · ${bank.filter((item) => lawCategory(item.law) === entry.law).length}개 문항` : '법령 및 문항 준비 중'}</p><button className="primary" disabled={!ready || !unlocked} onClick={() => startChapter(i)}>{!ready ? '준비 중' : unlocked ? (progress.completed.includes(i) ? '다시 플레이' : '시작') : '이전 챕터 완료 필요'}</button></article>; })}</div><p className="small">현재 출제 가능한 법령: {Array.from(new Set(available.map((item) => lawCategory(item.law)))).join(' · ') || '없음'}</p></>}
     {stage === 'briefing' && <article className="panel story-paper"><small>제{chapter + 1}장 · {active.law}</small><h2>{active.title}</h2><p>{active.briefing}</p><p>이번 심사 묶음 {queue.length}개 · 승진까지 {chapterDone} / {chapterTotal}</p><button className="primary" onClick={() => { setStage(queue.length ? 'case' : 'summary'); caseStartedAt.current = currentTimestamp(); }}>{queue.length ? '심사 시작' : '문항 없음 · 결산 보기'}</button></article>}
-    {stage === 'case' && selected && <StoryCaseDocument selected={selected} index={index} total={queue.length} result={visibleResult} saving={saving} onAnswer={submit} onNext={nextCase} nextLabel={index + 1 < queue.length ? '다음 사례' : incidentSeen ? '결산' : '중간 사건'}/>}
+    {stage === 'case' && selected && <StoryCaseDocument selected={selected} index={index} total={queue.length} result={visibleResult} unknownAnswer={answerUnknown} saving={saving} onAnswer={submit} onNext={nextCase} nextLabel={index + 1 < queue.length ? '다음 사례' : incidentSeen ? '결산' : '중간 사건'}/>}
     {stage === 'incident' && <article className="panel story-incident"><small>업무 중 잠시</small><h2>{active.incidentTitle}</h2><p>{active.incident}</p><button className="primary" onClick={continueAfterIncident}>사례 계속 심사</button></article>}
     {stage === 'summary' && <article className="panel story-summary">
       <div className="promotion-document">

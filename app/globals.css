@@ -178,3 +178,11 @@ body{background:#181918;color:#332c21}.office-scenery{position:fixed;inset:0;z-i
 .reading-settings-panel .reading-size-preview{line-height:1.7;border-top:1px solid #c5b58e;padding-top:12px;overflow-wrap:anywhere}
 .reading-settings-panel small{font-size:12px;color:#62543d}
 @media(max-width:750px){.reading-settings-panel{position:fixed;top:90px;right:12px;max-height:75vh;overflow-y:auto}}
+
+/* A deliberate unknown answer is always available, including on narrow phones. */
+.game-app .decision-buttons{flex-wrap:wrap}
+.game-app .decision-buttons .approve,.game-app .decision-buttons .reject{flex:1 1 calc(50% - 8px)}
+.game-app .decision-buttons .unknown{flex:0 0 auto;min-height:36px;width:auto;margin:2px auto 0;padding:7px 18px;font-size:14px;background:#46555f;color:#f5e8ca;border:1px solid #9a8d6d;border-radius:4px}
+.game-app .decision-buttons .unknown span{font-size:14px}
+.game-app .decision-buttons .unknown small{display:none}
+.game-app .decision-buttons .unknown small{color:#ded4b9}
