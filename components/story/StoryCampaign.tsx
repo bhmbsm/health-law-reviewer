@@ -95,6 +95,11 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
   const [saving, setSaving] = useState(false);
   const caseStartedAt = useRef(0);
   useEffect(() => { const timer = window.setTimeout(() => setProgress(loadStoryProgress(userId)), 0); return () => window.clearTimeout(timer); }, [userId]);
+  useEffect(() => {
+    if (stage !== 'case') return;
+    const frame = window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [queue, index, stage]);
   const selected = queue[index];
   const visibleResult = selected && answeredCaseId === selected.id ? choice : null;
   const available = useMemo(() => bank.filter((item) => storyChapters.some((entry) => entry.law && entry.law === lawCategory(item.law))), [bank]);
