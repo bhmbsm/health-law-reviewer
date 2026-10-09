@@ -5,13 +5,10 @@ export function numberedScenario(scenario:string,rule?:Rule):string {
  if(rule?.id.startsWith('ML-A3-4-')&&rule.approveFacts[0]?.training&&!scenario.includes('{training}'))scenario=scenario.replace('준비한 인력','수련기관 운영 현황은 “{training}”입니다. 준비한 인력');
  if(/\n\s*\d+\. /.test(scenario))return scenario;
  const sentences=scenario.trim().split(/(?<=[가-힣”"')\]}][.!?。])\s+/u);
- const list=sentences.findIndex(s=>/\{(?:document_items|consent_items)\}/.test(s));
- if(list>=0){
-  const row=sentences[list],key=row.includes('{consent_items}')?'consent_items':'document_items';
-  const header=key==='consent_items'?'환자에게 설명하고 서면동의를 받으려는 사항은 다음과 같습니다.':row.includes('가져온 서류')?'다음 서류를 가져왔습니다.':row.includes('서류에 기재')?'기재·제출하려는 항목은 다음과 같습니다.':'';
-  // Keep background facts before the list, and the actual question after it.
-  const rest=sentences.filter((_,i)=>i!==list),tail=rest.at(-1)||'';
-  return [rest.slice(0,-1).join(' '),header,`{${key}}`,tail].filter(Boolean).join('\n\n');
+ // Keep the scenario intact: only separate list placeholders from surrounding prose.
+ // This formatter runs twice during generation, so the change must be idempotent.
+ if(/\{(?:document_items|consent_items)\}/.test(scenario)){
+  return scenario.replace(/\s*\{(document_items|consent_items)\}\s*/g,'\n\n{$1}\n\n').trim();
  }
  const compound=(scenario.match(/\{[a-z_0-9]+\}/gi)||[]).length>=3||Object.keys(rule?.approveFacts[0]||{}).length>=3;
  if(!compound||sentences.length<4)return scenario;
