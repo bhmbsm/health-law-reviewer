@@ -34,6 +34,9 @@ export function insuranceExplanation(rule:Rule,selected:Record<string,unknown>,a
  const field=rule.changedField;if(!field)return;
  const value=String(selected[field]??'');
  const label=rule.factLabels?.[field]||'제시한 내용';
+ // Reviewed legal standards are authoritative. An example value is never a
+ // deadline, maximum, minimum, or exhaustive legal definition.
+ if(rule.judgmentBasis?.trim())return `${approved?'승인':'반려'}: 제시한 내용은 이 문항의 판단 기준에 ${approved?'맞습니다.':'맞지 않습니다.'}\n${rule.judgmentBasis.trim()}`;
  const pass=rule.approveFacts.map(f=>String(f[field]??''));
  if(approved)return `승인: ${value}는 ${label}의 법정 기준에 맞습니다.`;
  const concrete=[...new Set(pass)].filter(s=>!s.startsWith('RAND_'));
@@ -60,3 +63,4 @@ export function hospitalExplanation(rule:Rule,selected:Record<string,unknown>,ap
  if(!reasons.length)return; // Preserve unrelated answer rules rather than inventing a reason.
  return reasons.map((s,i)=>(i===0?'반려: ':'')+s).join('\n');
 }
+

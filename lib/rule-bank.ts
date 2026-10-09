@@ -146,7 +146,11 @@ const authorityScenario=(rule:Rule,selected:Record<string,unknown>)=>{
 };
 const caseBody=(rule:Rule,selected:Record<string,unknown>)=>{
   let scenario=authorityScenario(rule,selected);
-  if(selected.training==='')scenario=scenario.replace(/^\s*\d+\.\s*/gm,'').split(/(?<=[가-힣”"')\]}][.!?。])\s+/u).filter(sentence=>!sentence.includes('{training}')).join(' ');
+  if(selected.training===''){
+    // Omit only the training row, not an entire multiline application.
+    scenario=scenario.split('\n').filter(line=>!line.includes('{training}')).join('\n');
+    let number=0;scenario=scenario.replace(/^\s*\d+\. /gm,()=>`${++number}. `);
+  }
   return renderTemplate(numberedScenario(scenario),selected,rule.caseExpressions);
 };
 const facts=(value:Record<string,unknown>,labels:Record<string,string>={},order:string[]=[],scenario='',law='',embeddedFactKeys:string[]=[])=>Object.entries(value).sort(([a],[b])=>{const ai=order.indexOf(a),bi=order.indexOf(b);return (ai<0?Number.MAX_SAFE_INTEGER:ai)-(bi<0?Number.MAX_SAFE_INTEGER:bi);}).filter(([key,item])=>item!==''&&item!==null&&item!==undefined&&!scenario.includes(`{${key}}`)&&!embeddedFactKeys.includes(key)).flatMap(([key,item])=>{
@@ -306,5 +310,6 @@ export function refreshRuleCase(item:Case):Case{
   return generation?makeRuleCase({name:generation.name} as RuleBank,generation.rule,item.answer,generation.index):item;
 }
 export function makeRuleCases(banks:RuleBank[]):Case[]{return banks.flatMap(bank=>bank.rules.flatMap(raw=>{const rule=correctKnownMedicalRule(raw);return rule?[...rule.approveFacts.map((_,index)=>makeRuleCase(bank,rule,true,index)),...rule.rejectFacts.map((_,index)=>makeRuleCase(bank,rule,false,index))]:[];}));}
+
 
 
