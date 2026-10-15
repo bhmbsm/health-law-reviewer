@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {learnerBasis,selectedCaseReason} from '../lib/learner-explanation.ts';
+import {stripTypeScriptTypes} from 'node:module';
+import {readFile} from 'node:fs/promises';
+const helper=await readFile(new URL('../lib/learner-explanation.ts',import.meta.url),'utf8');
+const reviewed=await readFile(new URL('../lib/reviewed-explanations.ts',import.meta.url),'utf8');
+const source=reviewed+'\n'+helper.replace(/^import \{reviewedExplanations\} from '.\/reviewed-explanations';\s*$/m,'');
+const {learnerBasis,selectedCaseReason}=await import('data:text/javascript;base64,'+Buffer.from(stripTypeScriptTypes(source)).toString('base64'));
 const base={id:'test',changedField:'value',title:'주기',approveFacts:[{value:'5년'}],rejectFacts:[{value:'1년'},{value:'2년'},{value:'3년'}],judgmentBasis:'법정 주기는 5년입니다. 반려값은 사용자 요청으로 수정했습니다.'};
 test('production notes and other rejection options do not appear',()=>{
  const r={...base,judgmentBasis:'법정 주기는 5년입니다. 1년은 틀립니다. 2년은 틀립니다. 반려값은 사용자 요청으로 수정했습니다.'};
