@@ -10,6 +10,10 @@ test('law, enforcement decree and enforcement rule share a learning category',()
  }
  assert.equal(lawCategory('간호법 시행규칙'),'의료법');
  assert.equal(lawCategory('간호법'),'의료법');
+ assert.equal(lawCategory('의료법·의료법 시행령'),'의료법');
+ assert.equal(lawCategory('혈액관리법ㆍ혈액관리법 시행규칙'),'혈액관리법');
+ assert.equal(lawCategory('의료법ㆍ간호법 시행규칙'),'의료법');
+ assert.equal(lawCategory('의료법·혈액관리법'),'의료법·혈액관리법');
  assert.equal(lawCategory(), '');
 });
 test('one free-review category includes all three sources and excludes other laws',()=>{
