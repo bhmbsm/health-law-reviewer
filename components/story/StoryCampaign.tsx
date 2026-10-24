@@ -2,12 +2,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Award, Badge, BadgeCheck, Brain, Crown, Gem, Handshake, Landmark, Medal, Shield, ShieldCheck, Sparkles, Star, Trophy, Zap } from 'lucide-react';
 import type { Case } from '../../lib/cases';
-import {lawCategory} from '../../lib/question-bank';
-import StoryCaseDocument from './StoryCaseDocument';
-import { applyStoryResult, initialStoryStats, randomChapterCases, storyChapters, type StoryStats } from '../../lib/story';
-import { loadStoryProgress, saveStoryProgress, type StoryProgress } from '../../lib/story-progress';
 
-type Props = { userId: string | null; bank: Case[]; onExit: () => void; experience: number; storyAttemptedCaseIds: string[]; onAttempt: (item: Case, choice: boolean | null, correct: boolean, duration: number) => Promise<void> };
+import StoryCaseDocument from './StoryCaseDocument';
+import { applyStoryResult, initialStoryStats, randomChapterCases, storyChapters, availableChapterLaws, storyLaw, type StoryStats } from '../../lib/story';
+import { loadStoryProgress, saveStoryProgress, reconcileStoryProgress, type StoryAttempt, type StoryProgress } from '../../lib/story-progress';
+
+type Props = { userId: string | null; bank: Case[]; onExit: () => void; experience: number; storyAttempts: StoryAttempt[]; onAttempt: (item: Case, choice: boolean | null, correct: boolean, duration: number) => Promise<void> };
 type Stage = 'campaign' | 'briefing' | 'case' | 'incident' | 'summary';
 
 const rankIcons = { badge: Badge, shield: Shield, badgeCheck: BadgeCheck, shieldCheck: ShieldCheck, medal: Medal, award: Award, star: Star, crown: Crown, trophy: Trophy, gem: Gem, landmark: Landmark, sparkles: Sparkles };
@@ -74,7 +74,7 @@ function FloatingDelta({ value }: { value: number }) {
   return <span key={`${value}-${delta}`} className={`story-floating-delta ${delta > 0 ? 'increase' : 'decrease'}`} aria-hidden="true">{delta > 0 ? '+' : '−'}{Math.abs(delta)}</span>;
 }
 
-export default function StoryCampaign({ userId, bank, onExit, experience, storyAttemptedCaseIds, onAttempt }: Props) {
+export default function StoryCampaign({ userId, bank, onExit, experience, storyAttempts, onAttempt }: Props) {
   const [progress, setProgress] = useState<StoryProgress | null>(null);
   const [chapter, setChapter] = useState(0);
   const [stage, setStage] = useState<Stage>('campaign');
@@ -91,11 +91,18 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
   const [chapterStartRank, setChapterStartRank] = useState(storyChapters[0].rank);
   const [chapterStartUnlockedThrough, setChapterStartUnlockedThrough] = useState(0);
   const [attemptedIds, setAttemptedIds] = useState<Set<string>>(new Set());
-  const [attemptedThisRun, setAttemptedThisRun] = useState<Set<string>>(new Set());
-  const [chapterCaseCount, setChapterCaseCount] = useState(0);
+  const [chapterStartAnswered,setChapterStartAnswered]=useState(0);
+  const [runAnswered,setRunAnswered]=useState(0);
+  const [replay,setReplay]=useState(false);
   const [saving, setSaving] = useState(false);
   const caseStartedAt = useRef(0);
-  useEffect(() => { const timer = window.setTimeout(() => setProgress(loadStoryProgress(userId)), 0); return () => window.clearTimeout(timer); }, [userId]);
+  useEffect(() => {
+    const timer=window.setTimeout(()=>{
+      const next=reconcileStoryProgress(loadStoryProgress(userId),storyAttempts);
+      saveStoryProgress(next,userId);setProgress(next);
+    },0);
+    return()=>window.clearTimeout(timer);
+  },[userId,storyAttempts]);
   useEffect(() => {
     if (stage !== 'case') return;
     const frame = window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
@@ -103,13 +110,17 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
   }, [queue, index, stage]);
   const selected = queue[index];
   const visibleResult = selected && answeredCaseId === selected.id ? choice : null;
-  const available = useMemo(() => bank.filter((item) => storyChapters.some((entry) => entry.law && entry.law === lawCategory(item.law))), [bank]);
+  const available = useMemo(() => bank.filter((item) => storyChapters.some((entry) => entry.laws.includes(storyLaw(item.law)))), [bank]);
   function persist(next: StoryProgress) { setProgress(next); saveStoryProgress(next, userId); }
   function startChapter(ch: number) {
     if (!progress || ch > progress.unlockedThrough) return;
-    const attempted = new Set(storyAttemptedCaseIds);
-    const cases = randomChapterCases(bank, ch, attempted);
-    const wasCompleted = progress.completed.includes(ch);
+    const history=storyAttempts.filter(attempt=>attempt.chapter===ch);
+    const attempted=new Set(history.map(attempt=>attempt.case_id));
+    const wasCompleted=progress.completed.includes(ch);
+    const done=wasCompleted?0:Math.min(storyChapters[ch].target,history.length);
+    const cases=randomChapterCases(bank,ch,attempted,12,done).map(item=>({...item,chapter:ch}));
+    if(!cases.length)return;
+    setReplay(wasCompleted);setChapterStartAnswered(done);setRunAnswered(0);
     setChapterStartStats(progress.stats);
     setChapterStartExperience(safeExperience);
     setChapterStartRank(wasCompleted
@@ -117,8 +128,7 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
       : storyChapters[ch].rank);
     setChapterStartUnlockedThrough(progress.unlockedThrough);
     setAttemptedIds(attempted);
-    setAttemptedThisRun(new Set());
-    setChapterCaseCount(bank.filter((item) => lawCategory(item.law) === storyChapters[ch].law).length);
+
     setChapter(ch); setQueue(cases); setIndex(0); setCorrectCount(0); setChoice(null); setAnsweredCaseId(null); setIncidentSeen(false);
     caseStartedAt.current = currentTimestamp();
     setStage('briefing');
@@ -133,22 +143,19 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
       setAnsweredCaseId(selected.id);
       setChoice(correct);
       if (correct) setCorrectCount((n) => n + 1);
+      setRunAnswered(n=>n+1);
       setAttemptedIds((old) => new Set([...old, selected.id]));
-      setAttemptedThisRun((old) => new Set([...old, selected.id]));
       persist({ ...progress, stats: applyStoryResult(progress.stats, correct) });
     } catch { /* 저장 오류는 상위 화면의 공통 오류 영역에 표시됩니다. */ }
     finally { setSaving(false); }
   }
   function nextCase() {
-    if (saving) return;
-    if (!incidentSeen && queue.length > 1 && index + 1 >= Math.ceil(queue.length / 2)) { setStage('incident'); return; }
-    if (index + 1 < queue.length) { setIndex((n) => n + 1); setChoice(null); setAnsweredCaseId(null); caseStartedAt.current = currentTimestamp(); return; }
-    const law = storyChapters[chapter].law;
-    const pending = bank.filter((item) => lawCategory(item.law) === law && !attemptedIds.has(item.id));
-    if (pending.length) {
-      setQueue(randomChapterCases(bank, chapter, attemptedIds)); setIndex(0); setChoice(null); setAnsweredCaseId(null); setStage('briefing'); caseStartedAt.current = currentTimestamp(); return;
-    }
-    finishChapter();
+    if(saving||choice===null)return;
+    if(chapterDone>=chapterTotal){finishChapter();return;}
+    if(!incidentSeen&&queue.length>1&&index+1<queue.length&&index+1>=Math.ceil(queue.length/2)){setStage('incident');return;}
+    if(index+1<queue.length){setIndex(n=>n+1);setChoice(null);setAnsweredCaseId(null);caseStartedAt.current=currentTimestamp();return;}
+    const nextQueue=randomChapterCases(bank,chapter,attemptedIds,12,chapterDone).map(item=>({...item,chapter}));
+    setQueue(nextQueue);setIndex(0);setChoice(null);setAnsweredCaseId(null);setStage('briefing');caseStartedAt.current=currentTimestamp();
   }
   function continueAfterIncident() {
     setIncidentSeen(true);
@@ -160,7 +167,7 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
     setStage('case');
   }
   function finishChapter() {
-    if (!progress) return;
+    if (!progress || chapterDone < chapterTotal) return;
     const completed = [...new Set([...progress.completed, chapter])];
     persist({ ...progress, completed, unlockedThrough: Math.max(progress.unlockedThrough, Math.min(11, chapter + 1)) });
     setStage('summary');
@@ -178,9 +185,9 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
   const experienceGain = currentExperience - Math.max(0, safeNumber(chapterStartExperience));
   const judgmentChange = currentJudgment - startJudgment;
   const trustChange = currentTrust - startTrust;
-  const chapterTotal = Math.max(0, Math.floor(safeNumber(chapterCaseCount)));
-  const recordedIds = new Set([...attemptedIds, ...attemptedThisRun]);
-  const chapterDone = Math.min(chapterTotal, bank.filter((item) => lawCategory(item.law) === active.law && recordedIds.has(item.id)).length);
+  const chapterTotal=active.target;
+  const chapterDone=Math.min(chapterTotal,replay?runAnswered:Math.max(storyAttempts.filter(attempt=>attempt.chapter===chapter).length,chapterStartAnswered+runAnswered));
+  const chapterLaws=availableChapterLaws(bank,chapter);
   const chapterProgress = chapterTotal ? Math.round(chapterDone / chapterTotal * 100) : 0;
   return <section className="story-campaign">
     <header className="story-top"><div><span className="eyebrow">스토리 캠페인</span><h1>심사관의 업무일지</h1></div><button className="secondary" onClick={onExit}>나가기</button></header>
@@ -193,9 +200,16 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
       </div>
       <div className="chapter-promotion-progress"><small>승진까지 <b>{chapterDone} / {chapterTotal}</b></small><AnimatedBar value={chapterProgress}/></div>
     </div>
-    {stage === 'campaign' && <><p>챕터 상태는 플레이 가능 여부와 문항 준비 여부로 나뉩니다.</p><div className="story-chapters">{storyChapters.map((entry, i) => { const ready = !!entry.law && bank.some((item) => lawCategory(item.law) === entry.law); const unlocked = i <= progress.unlockedThrough; const status = !ready ? '🕓 준비 중' : unlocked ? '🔓 플레이 가능' : '🔒 잠김'; const statusClass = !ready ? 'preparing' : unlocked ? 'unlocked' : 'locked'; return <article className={`panel story-chapter ${statusClass}`} key={entry.title}><div className="story-chapter-heading"><small>제{i + 1}장 · {entry.rank}</small><span className={`story-status ${statusClass}`}>{status}</span></div><h2>{entry.title}</h2><p>{ready ? `${entry.law} · ${bank.filter((item) => lawCategory(item.law) === entry.law).length}개 문항` : '법령 및 문항 준비 중'}</p><button className="primary" disabled={!ready || !unlocked} onClick={() => startChapter(i)}>{!ready ? '준비 중' : unlocked ? (progress.completed.includes(i) ? '다시 플레이' : '시작') : '이전 챕터 완료 필요'}</button></article>; })}</div><p className="small">현재 출제 가능한 법령: {Array.from(new Set(available.map((item) => lawCategory(item.law)))).join(' · ') || '없음'}</p></>}
-    {stage === 'briefing' && <article className="panel story-paper"><small>제{chapter + 1}장 · {active.law}</small><h2>{active.title}</h2><p>{active.briefing}</p><p>이번 심사 묶음 {queue.length}개 · 승진까지 {chapterDone} / {chapterTotal}</p><button className="primary" onClick={() => { setStage(queue.length ? 'case' : 'summary'); caseStartedAt.current = currentTimestamp(); }}>{queue.length ? '심사 시작' : '문항 없음 · 결산 보기'}</button></article>}
-    {stage === 'case' && selected && <StoryCaseDocument selected={selected} index={index} total={queue.length} result={visibleResult} unknownAnswer={answerUnknown} saving={saving} onAnswer={submit} onNext={nextCase} nextLabel={index + 1 < queue.length ? '다음 사례' : incidentSeen ? '결산' : '중간 사건'}/>}
+    {stage === 'campaign' && <><p>챕터마다 50문항을 풀면 다음 직급과 챕터가 열립니다. 맞히지 못한 문제도 진행에 포함됩니다.</p><div className="story-chapters">{storyChapters.map((entry,i)=>{
+      const laws=availableChapterLaws(bank,i),ready=laws.length>0,unlocked=i<=progress.unlockedThrough;
+      const missing=entry.laws.filter(law=>!laws.includes(law));
+      const done=Math.min(entry.target,storyAttempts.filter(attempt=>attempt.chapter===i).length);
+      const status=!ready?'🕓 준비 중':progress.completed.includes(i)?'✓ 완료':unlocked?'🔓 플레이 가능':'🔒 잠김';
+      const statusClass=!ready?'preparing':unlocked?'unlocked':'locked';
+      return <article className={`panel story-chapter ${statusClass}`} key={entry.title}><div className="story-chapter-heading"><small>제{i+1}장 · {entry.rank}</small><span className={`story-status ${statusClass}`}>{status}</span></div><h2>{entry.title}</h2><p className="chapter-law-list">{ready?laws.join(' · '):'법령 및 문항 준비 중'}</p><p className="chapter-target">{done} / {entry.target}문항 · 완료 시 다음 챕터</p>{ready&&missing.length>0&&<small>등록된 법령으로 진행합니다. {missing.join(' · ')}은 문항 등록 후 함께 출제됩니다.</small>}<button className="primary" disabled={!ready||!unlocked} onClick={()=>startChapter(i)}>{!ready?'준비 중':unlocked?(progress.completed.includes(i)?'다시 플레이':'시작'):'이전 챕터 완료 필요'}</button></article>;
+    })}</div><p className="small">현재 출제 가능한 법령: {Array.from(new Set(available.map(item=>storyLaw(item.law)))).join(' · ')||'없음'}</p></>}
+    {stage === 'briefing' && <article className="panel story-paper"><small>제{chapter + 1}장 · {chapterLaws.join(' · ')}</small><h2>{active.title}</h2><p>{active.briefing}</p><p>이번 심사 묶음 {queue.length}개 · 승진까지 {chapterDone} / {chapterTotal}</p><button className="primary" onClick={() => { setStage(queue.length ? 'case' : 'campaign'); caseStartedAt.current = currentTimestamp(); }}>{queue.length ? '심사 시작' : '문항 없음 · 챕터 목록'}</button></article>}
+    {stage === 'case' && selected && <StoryCaseDocument selected={selected} index={index} total={queue.length} result={visibleResult} unknownAnswer={answerUnknown} saving={saving} onAnswer={submit} onNext={nextCase} nextLabel={chapterDone>=chapterTotal?'챕터 완료':index+1<queue.length?'다음 사례':'다음 업무'}/>}
     {stage === 'incident' && <article className="panel story-incident"><small>업무 중 잠시</small><h2>{active.incidentTitle}</h2><p>{active.incident}</p><button className="primary" onClick={continueAfterIncident}>사례 계속 심사</button></article>}
     {stage === 'summary' && <article className="panel story-summary">
       <div className="promotion-document">
@@ -206,14 +220,15 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
         <div className={`promotion-seal ${promoted ? 'is-promotion' : ''}`}>{promoted ? '승진' : '완료'}<small>심사실 인사과</small></div>
       </div>
       <section className="performance-sheet" aria-label="근무 평정표">
-        <div className="performance-sheet-heading"><b>근무 평정표</b><span>{attemptedThisRun.size ? `이번 심사 ${attemptedThisRun.size}건 중 ${Math.max(0, correctCount)}건 정답` : '출제 가능한 기존 문항이 없습니다.'}</span></div>
+        <div className="performance-sheet-heading"><b>근무 평정표</b><span>{runAnswered ? `이번 심사 ${runAnswered}건 중 ${Math.max(0, correctCount)}건 정답 · 정답률 ${Math.round(correctCount/runAnswered*100)}%` : '출제 가능한 기존 문항이 없습니다.'}</span></div>
         <div className="performance-sheet-row">
           <div className="performance-item"><span><Zap aria-hidden="true"/> EXP</span><strong><CountUp from={chapterStartExperience} to={currentExperience}/><em className={`performance-delta ${experienceGain > 0 ? 'increase' : experienceGain < 0 ? 'decrease' : ''}`}>{experienceGain > 0 ? '+' : ''}{experienceGain}</em></strong></div>
           <div className="performance-item"><span><Brain aria-hidden="true"/> 판단력</span><strong><CountUp from={startJudgment} to={currentJudgment}/><em className={`performance-delta ${judgmentChange > 0 ? 'increase' : judgmentChange < 0 ? 'decrease' : ''}`}>{judgmentChange > 0 ? '+' : ''}{judgmentChange}</em></strong></div>
           <div className="performance-item"><span><Handshake aria-hidden="true"/> 신뢰도</span><strong><CountUp from={startTrust} to={currentTrust}/><em className={`performance-delta ${trustChange > 0 ? 'increase' : trustChange < 0 ? 'decrease' : ''}`}>{trustChange > 0 ? '+' : ''}{trustChange}</em></strong></div>
         </div>
       </section>
-      <p>다음 챕터 잠금 해제</p><button className="primary" onClick={() => setStage('campaign')}>챕터 목록</button>
+      <p>{chapter===storyChapters.length-1?'12개 챕터를 모두 마쳤습니다.':'다음 챕터를 플레이할 수 있습니다.'}</p><button className="primary" onClick={() => setStage('campaign')}>챕터 목록</button>
     </article>}
   </section>;
 }
+

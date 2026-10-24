@@ -20,7 +20,7 @@ test('story uses uploaded cases, excludes other laws, and does not repeat comple
   assert.ok(selected.every(item => item.law === '의료법' && !attempted.has(item.id)));
   assert.ok(selected.every(item => bank.includes(item)));
   assert.deepEqual(story.randomChapterCases([], 0), []);
-  assert.deepEqual(story.randomChapterCases(bank, 1), []);
+  assert.ok(story.randomChapterCases(bank, 1).every(item => item.law === '의료법'));
 });
 
 test('story progress is isolated between accounts and the guest', () => {
