@@ -7,7 +7,7 @@ const {caseNarrative}=await vite.ssrLoadModule('/lib/case-narrative.ts');
 const {makeRuleCase}=await vite.ssrLoadModule('/lib/rule-bank.ts');
 test('situation and all conditions precede the final question',()=>{
  const item={body:'종합병원을 개설하려고 합니다. 개설할 수 있을까요?',details:['개설 예정 병상은 670병상입니다.','설치 예정 진료과목은 내과, 외과입니다.']};
- assert.equal(caseNarrative(item),'종합병원을 개설하려고 합니다. 개설 예정 병상은 670병상입니다. 설치 예정 진료과목은 내과, 외과입니다. 개설할 수 있을까요?');
+ assert.equal(caseNarrative(item),'종합병원을 개설하려고 합니다.\n\n1. 개설 예정 병상은 670병상입니다.\n\n2. 설치 예정 진료과목은 내과, 외과입니다.\n\n개설할 수 있을까요?');
 });
 test('conditions preserve their order, quantities, dates and omission',()=>{
  const item={body:'2026년 12월 24일에 상담했습니다. 이 신청을 승인할 수 있는지 판단하세요.',details:['환자는 만 16세입니다.','신청인의 신분증을 가져왔습니다.','환자의 동의서를 가져왔습니다.']};

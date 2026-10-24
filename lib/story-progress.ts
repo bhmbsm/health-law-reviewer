@@ -1,4 +1,4 @@
-import { initialStoryStats, type StoryStats } from './story';
+import { initialStoryStats, storyChapters, type StoryStats } from './story';
 
 export type StoryProgress = { unlockedThrough: number; completed: number[]; stats: StoryStats };
 const storageKey = (userId: string | null) => `health-law-reviewer-story-v2:${userId || 'guest'}`;
@@ -30,4 +30,13 @@ export function loadStoryProgress(userId: string | null = null): StoryProgress {
 
 export function saveStoryProgress(progress: StoryProgress, userId: string | null = null): void {
   localStorage.setItem(storageKey(userId), JSON.stringify(progress));
+}
+
+export type StoryAttempt={case_id:string;chapter:number};
+export function reconcileStoryProgress(progress:StoryProgress,attempts:readonly StoryAttempt[]):StoryProgress{
+ const completed=new Set(progress.completed);
+ for(let chapter=0;chapter<storyChapters.length;chapter++)if(attempts.filter(attempt=>attempt.chapter===chapter).length>=storyChapters[chapter].target)completed.add(chapter);
+ let unlockedThrough=0;
+ while(unlockedThrough<storyChapters.length-1&&completed.has(unlockedThrough))unlockedThrough++;
+ return {...progress,completed:[...completed].sort((a,b)=>a-b),unlockedThrough};
 }
