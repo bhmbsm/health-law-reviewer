@@ -7,7 +7,7 @@ import StoryCaseDocument from './StoryCaseDocument';
 import { applyStoryResult, initialStoryStats, randomChapterCases, storyChapters, availableChapterLaws, storyLaw, type StoryStats } from '../../lib/story';
 import { loadStoryProgress, saveStoryProgress, reconcileStoryProgress, type StoryAttempt, type StoryProgress } from '../../lib/story-progress';
 
-type Props = { userId: string | null; bank: Case[]; onExit: () => void; experience: number; storyAttempts: StoryAttempt[]; onAttempt: (item: Case, choice: boolean | null, correct: boolean, duration: number) => Promise<void> };
+type Props = { userId: string | null; bank: Case[]; onExit: () => void; reviewCaseIds: ReadonlySet<string>; reviewSaving: boolean; onAddReview: (item: Case) => Promise<void>; experience: number; storyAttempts: StoryAttempt[]; onAttempt: (item: Case, choice: boolean | null, correct: boolean, duration: number) => Promise<void> };
 type Stage = 'campaign' | 'briefing' | 'case' | 'incident' | 'summary';
 
 const rankIcons = { badge: Badge, shield: Shield, badgeCheck: BadgeCheck, shieldCheck: ShieldCheck, medal: Medal, award: Award, star: Star, crown: Crown, trophy: Trophy, gem: Gem, landmark: Landmark, sparkles: Sparkles };
@@ -74,7 +74,7 @@ function FloatingDelta({ value }: { value: number }) {
   return <span key={`${value}-${delta}`} className={`story-floating-delta ${delta > 0 ? 'increase' : 'decrease'}`} aria-hidden="true">{delta > 0 ? '+' : '−'}{Math.abs(delta)}</span>;
 }
 
-export default function StoryCampaign({ userId, bank, onExit, experience, storyAttempts, onAttempt }: Props) {
+export default function StoryCampaign({ userId, bank, onExit, experience, storyAttempts, onAttempt, reviewCaseIds, reviewSaving, onAddReview }: Props) {
   const [progress, setProgress] = useState<StoryProgress | null>(null);
   const [chapter, setChapter] = useState(0);
   const [stage, setStage] = useState<Stage>('campaign');
@@ -209,7 +209,7 @@ export default function StoryCampaign({ userId, bank, onExit, experience, storyA
       return <article className={`panel story-chapter ${statusClass}`} key={entry.title}><div className="story-chapter-heading"><small>제{i+1}장 · {entry.rank}</small><span className={`story-status ${statusClass}`}>{status}</span></div><h2>{entry.title}</h2><p className="chapter-law-list">{ready?laws.join(' · '):'법령 및 문항 준비 중'}</p><p className="chapter-target">{done} / {entry.target}문항 · 완료 시 다음 챕터</p>{ready&&missing.length>0&&<small>등록된 법령으로 진행합니다. {missing.join(' · ')}은 문항 등록 후 함께 출제됩니다.</small>}<button className="primary" disabled={!ready||!unlocked} onClick={()=>startChapter(i)}>{!ready?'준비 중':unlocked?(progress.completed.includes(i)?'다시 플레이':'시작'):'이전 챕터 완료 필요'}</button></article>;
     })}</div><p className="small">현재 출제 가능한 법령: {Array.from(new Set(available.map(item=>storyLaw(item.law)))).join(' · ')||'없음'}</p></>}
     {stage === 'briefing' && <article className="panel story-paper"><small>제{chapter + 1}장 · {chapterLaws.join(' · ')}</small><h2>{active.title}</h2><p>{active.briefing}</p><p>이번 심사 묶음 {queue.length}개 · 승진까지 {chapterDone} / {chapterTotal}</p><button className="primary" onClick={() => { setStage(queue.length ? 'case' : 'campaign'); caseStartedAt.current = currentTimestamp(); }}>{queue.length ? '심사 시작' : '문항 없음 · 챕터 목록'}</button></article>}
-    {stage === 'case' && selected && <StoryCaseDocument selected={selected} index={index} total={queue.length} result={visibleResult} unknownAnswer={answerUnknown} saving={saving} onAnswer={submit} onNext={nextCase} nextLabel={chapterDone>=chapterTotal?'챕터 완료':index+1<queue.length?'다음 사례':'다음 업무'}/>}
+    {stage === 'case' && selected && <StoryCaseDocument selected={selected} index={index} total={queue.length} result={visibleResult} unknownAnswer={answerUnknown} saving={saving||reviewSaving} inReview={reviewCaseIds.has(selected.id)} onAddReview={()=>void onAddReview(selected)} onAnswer={submit} onNext={nextCase} nextLabel={chapterDone>=chapterTotal?'챕터 완료':index+1<queue.length?'다음 사례':'다음 업무'}/>}
     {stage === 'incident' && <article className="panel story-incident"><small>업무 중 잠시</small><h2>{active.incidentTitle}</h2><p>{active.incident}</p><button className="primary" onClick={continueAfterIncident}>사례 계속 심사</button></article>}
     {stage === 'summary' && <article className="panel story-summary">
       <div className="promotion-document">
