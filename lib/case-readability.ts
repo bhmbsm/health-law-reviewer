@@ -1,4 +1,5 @@
 import type {Rule} from './rule-bank';
+import {insuranceLawBasis} from './insurance-explanation';
 
 /** Number complete fact sentences; never split dates, numbers, or legal names. */
 export function numberedScenario(scenario:string,rule?:Rule):string {
@@ -25,21 +26,19 @@ export function compactExplanation(value:string):string {
  return clean.split(/(?<=[가-힣”"')\]][.!?。])\s+/u).join('\n');
 }
 
-/** Do not append the entire law to a selected insurance variant. */
+/** Use reviewed criteria or the uploaded legal text, never infer a standard from examples. */
 export function insuranceExplanation(rule:Rule,selected:Record<string,unknown>,approved:boolean):string|undefined {
  if(!rule.law.startsWith('국민건강보험법'))return;
  const field=rule.changedField;if(!field)return;
  const value=String(selected[field]??'');
  const label=rule.factLabels?.[field]||'제시한 내용';
- // Reviewed legal standards are authoritative. An example value is never a
- // deadline, maximum, minimum, or exhaustive legal definition.
- if(rule.judgmentBasis?.trim())return `${approved?'승인':'반려'}: 제시한 내용은 이 문항의 판단 기준에 ${approved?'맞습니다.':'맞지 않습니다.'}\n${rule.judgmentBasis.trim()}`;
- const pass=rule.approveFacts.map(f=>String(f[field]??''));
- if(approved)return `승인: ${value}는 ${label}의 법정 기준에 맞습니다.`;
- const concrete=[...new Set(pass)].filter(s=>!s.startsWith('RAND_'));
- if(concrete.length&&concrete.join(' 또는 ').length<=100)return `반려: ${label}의 기준은 ${concrete.join(' 또는 ')}입니다.\n제시한 ${value}는 이 기준에 맞지 않습니다.`;
- // Multiple long permissible paths: explain the selected exclusion, without a wall of alternatives.
- return `반려: 제시한 ${value}는 ${label}에 관한 법정 요건에 해당하지 않습니다.\n구체적인 요건은 연결된 법령 원문에서 확인할 수 있습니다.`;
+ const verdict=`${approved?'승인':'반려'}: 제시한 내용은 이 문항의 판단 기준에 ${approved?'맞습니다.':'맞지 않습니다.'}`;
+ // Reviewed criteria take precedence over a longer uploaded excerpt.
+ if(rule.judgmentBasis?.trim())return `${verdict}\n${rule.judgmentBasis.trim()}`;
+ const basis=insuranceLawBasis(rule);
+ if(basis)return `${verdict}\n${label}: ${value}.\n${basis}`;
+ // No source is available: examples cannot establish a deadline or an exhaustive list.
+ return `${verdict}\n${label}: ${value}.\n구체적인 법정 요건은 연결된 법령 원문에서 확인해 주세요.`;
 }
 
 /** Evaluate legal categories, never treat an example's optional specialty as mandatory. */

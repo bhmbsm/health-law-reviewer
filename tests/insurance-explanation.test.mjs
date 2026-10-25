@@ -27,3 +27,27 @@ test('known timely-filing cases no longer assert a penalty before the student de
  assert.doesNotMatch(insuranceScenario({...rule,id:'NHI-A7-DAYS-001',scenario:'카페를 개업한 윤OO씨가 첫 직원을 채용해 적용대상사업장이 되었고, 이후 보험자에게 사업장 신고를 했다. 공단은 과태료를 부과했다.'}),/과태료/);
  assert.equal(insuranceLawBasis({...rule,law:'의료법'}),'');
 });
+
+test('reviewed criteria take precedence and preserve uploaded rule facts',()=>{
+ const reviewed={...rule,judgmentBasis:'검수된 적용 조건: 신고 의무 발생일부터 14일 이내입니다.'};
+ const before=structuredClone(reviewed);
+ const cases=makeRuleCases([{name:'보험법',rules:[reviewed]}]);
+ assert.deepEqual(reviewed,before);
+ assert.deepEqual(cases.map(c=>c.answer),[true,true,false]);
+ for(const c of cases){assert.match(c.explanation,/검수된 적용 조건/);assert.doesNotMatch(c.explanation,/사업장 사용자는/);}
+});
+test('missing legal text never turns permissible examples into an exhaustive standard',()=>{
+ for(const exampleFacts of [[{days:'1일'},{days:'10일'}],[{days:'1일'}]]){
+  const cases=makeRuleCases([{name:'보험법',rules:[{...rule,lawText:'',approveFacts:exampleFacts}]}]);
+  for(const c of cases){
+   assert.match(c.explanation,/구체적인 법정 요건은 연결된 법령 원문/);
+   assert.doesNotMatch(c.explanation,/기준은 1일|1일 또는 10일/);
+  }
+ }
+});
+test('decree and regulation cases use the uploaded legal basis, not the generated example',()=>{
+ for(const law of ['국민건강보험법 시행령','국민건강보험법 시행규칙']){
+  const cases=makeRuleCases([{name:'보험법',rules:[{...rule,law,source:''}]}]);
+  for(const c of cases){assert.match(c.explanation,/14일 이내/);assert.doesNotMatch(c.explanation,/기준은 1일 또는 10일/);}
+ }
+});
