@@ -206,3 +206,5 @@ body{background:#181918;color:#332c21}.office-scenery{position:fixed;inset:0;z-i
 .story-chapter .chapter-law-list{font-size:13px;line-height:1.7}
 .story-chapter .chapter-target{font-weight:700;color:#65512d}
 @media(max-width:600px){.study-session-toolbar{padding:9px 11px;font-size:13px}.study-session-toolbar .primary{font-size:14px;padding:10px 12px}.case-copy ol{padding-left:1.5em}}
+
+.review-add-button { margin-block: .75rem; max-width: 100%; white-space: normal; }
