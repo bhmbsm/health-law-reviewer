@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict';
 import test,{after} from 'node:test';
-import {readFileSync} from 'node:fs';
+import {questionBankFixtures as payloads} from './fixtures/question-banks.mjs';
 import {createServer} from 'vite';
 const vite=await createServer({appType:'custom',configFile:false,server:{middlewareMode:true,hmr:false,ws:false}});
 after(()=>vite.close());
 const {packQuestionBanks,unpackQuestionBanks,loadPublicQuestionBanks}=await vite.ssrLoadModule('/lib/bank-transport.ts');
 const {GET}=await vite.ssrLoadModule('/app/api/question-bank/route.ts');
 const {buildQuestionBank}=await vite.ssrLoadModule('/lib/question-bank.ts');
-const payloads=JSON.parse(readFileSync(new URL('./current-upload-fixture.json',import.meta.url),'utf8'));
 const rows=payloads.map(payload=>({payload}));
 test('saved banks round-trip exactly, including every source, fact, answer and law text',()=>{
  const before=JSON.stringify(rows);const packed=packQuestionBanks(rows);
@@ -17,7 +16,8 @@ test('saved banks round-trip exactly, including every source, fact, answer and l
 });
 test('reconstructed banks still generate the same number of usable cases',async()=>{
  const cases=await buildQuestionBank(unpackQuestionBanks(packQuestionBanks(rows)));
- assert.equal(cases.length,1910);assert.ok(cases.every(c=>c.rule.length>0));
+ const original=await buildQuestionBank(rows);
+ assert.equal(cases.length,13);assert.deepEqual(cases,original);assert.ok(cases.every(c=>c.rule.length>0));
 });
 test('fixed questions, empty banks and missing lawText stay unchanged',()=>{
  for(const input of [[],[{payload:{id:'custom-1',body:'사례',rule:'원문'}}],[{payload:{kind:'rule-bank',rules:[{id:'node',lawText:''},{id:'node-2'}]}}]])assert.deepEqual(unpackQuestionBanks(packQuestionBanks(input)),input);
