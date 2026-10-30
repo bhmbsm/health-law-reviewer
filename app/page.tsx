@@ -1,11 +1,13 @@
 'use client';
 import dynamic from 'next/dynamic';
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {loadPublicQuestionBanks} from '../lib/bank-transport';
+import {loadQuestionBanks} from '../lib/bank-transport';
+import StudyLoginGate from '../components/StudyLoginGate';
+import {isRegisteredStudyUser,LOGIN_REQUIRED_MESSAGE} from '../lib/study-access';
 import {caseNarrative} from '../lib/case-narrative';
 import CaseText from '../components/CaseText';
 import ReviewAddButton from '../components/ReviewAddButton';
-import {reviewCaseIds,readReviewTimestamps} from '../lib/review-inbox';
+import {reviewCaseIds} from '../lib/review-inbox';
 import {nextFreeStudyCase,studySummary,type StudySession} from '../lib/study-session';
 import {createSingleFlight,shouldReloadForAuth,seoulDay} from '../lib/app-loading';
 import {BookOpen,LayoutDashboard,Waypoints,Files,RotateCcw,ChartNoAxesCombined,Library,Flame,ArrowRight,Check,X,ShieldCheck,ChevronRight,Download,Upload,CheckCircle2,Stamp,Scale,ArrowLeft,Share2,Heart,Target,UserRound} from 'lucide-react';
@@ -25,12 +27,6 @@ import {unsubscribeCurrentDevice} from '../lib/push-client';
 type Attempt={id:string;case_id:string;mode:string;chapter:number;choice:number|null;correct:number;hint:number;duration:number;created:string};
 type LocalProgress={attempts:Attempt[];cases:Case[];ruleBanks?:RuleBank[]};
 const STORAGE_KEY='health-law-reviewer-progress-v1';
-const REVIEW_DISMISSALS_KEY='health-law-review-dismissals-v1';
-const REVIEW_ADDITIONS_KEY='health-law-review-additions-v1';
-function readLocalReview(key:string){try{return readReviewTimestamps(localStorage.getItem(key));}catch{return {};}}
-function readReviewDismissals(){return readLocalReview(REVIEW_DISMISSALS_KEY);}
-function readReviewAdditions(){return readLocalReview(REVIEW_ADDITIONS_KEY);}
-
 function readProgress():LocalProgress{try{const raw=localStorage.getItem(STORAGE_KEY);if(!raw)return {attempts:[],cases:[],ruleBanks:[]};const data=JSON.parse(raw);return {attempts:Array.isArray(data.attempts)?data.attempts:[],cases:Array.isArray(data.cases)?data.cases:[],ruleBanks:Array.isArray(data.ruleBanks)?data.ruleBanks.filter(isRuleBank):[]};}catch{return {attempts:[],cases:[],ruleBanks:[]};}}
 function writeProgress(data:LocalProgress){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));}
 const day=seoulDay;
@@ -41,7 +37,7 @@ const Progress=({value}:{value:number})=><div className="progress"><span style={
 const Stat=({label,value,sub}:{label:string;value:string;sub:string})=><div className="stat"><span>{label}</span><strong>{value}</strong><small>{sub}</small></div>;
 export default function App(){
 const [tab,setTab]=useState('home'),[bank,setBank]=useState<Case[]>([]),[attempts,setAttempts]=useState<Attempt[]>([]),[ready,setReady]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[filter,setFilter]=useState('전체'),[difficulty,setDifficulty]=useState('전체'),[search,setSearch]=useState('');
-const [session,setSession]=useState<StudySession|null>(null),[result,setResult]=useState<boolean|null>(null),[hint,setHint]=useState(false),[usedHint,setUsedHint]=useState(false),[finished,setFinished]=useState(false),[toast,setToast]=useState(''),[guest,setGuest]=useState(true),[sound,setSound]=useState(false),[installPrompt,setInstallPrompt]=useState<any>(null);
+const [session,setSession]=useState<StudySession|null>(null),[result,setResult]=useState<boolean|null>(null),[hint,setHint]=useState(false),[usedHint,setUsedHint]=useState(false),[finished,setFinished]=useState(false),[toast,setToast]=useState(''),[sound,setSound]=useState(false),[installPrompt,setInstallPrompt]=useState<any>(null);
 const [reviewDismissals,setReviewDismissals]=useState<Record<string,string>>({});
 const [reviewAdditions,setReviewAdditions]=useState<Record<string,string>>({});
 const [answeredUnknown,setAnsweredUnknown]=useState(false);
@@ -49,10 +45,64 @@ const [member,setMember]=useState<{id:string;email:string;nickname:string;isAdmi
 const [friendLeaders,setFriendLeaders]=useState<{nickname:string;solved:number;correct:number;accuracy:number}[]>([]),[groupCode,setGroupCode]=useState('');
 const startTime=useRef(Date.now()),requestId=useRef(''),fileRef=useRef<HTMLInputElement>(null),lock=useRef(false);
 const loadOnce=useRef(createSingleFlight<void>()),loadedUser=useRef<string|null|undefined>(undefined);
+const authRevision=useRef(0),studyUser=useRef<string|null>(null);
+function clearStudyAccess(){
+ studyUser.current=null;setMember(null);setBank([]);setAttempts([]);setReviewDismissals({});setReviewAdditions({});setFriendLeaders([]);setGroupCode('');setSession(null);setFinished(false);setResult(null);setHint(false);setUsedHint(false);setAnsweredUnknown(false);
+}
+function requireMember(){
+ if(!member||!supabase||studyUser.current!==member.id){setError(LOGIN_REQUIRED_MESSAGE);return false;}
+ return true;
+}
 function load(){return loadOnce.current(loadData);}
-async function loadData(){setError('');try{const saved=readProgress();setReviewDismissals(readReviewDismissals());setReviewAdditions(readReviewAdditions());if(!supabase){setAttempts(saved.attempts);setBank(await buildQuestionBank([],saved.cases,saved.ruleBanks,false));setGuest(true);setReady(true);return;}// Start the large shared bank before waiting for auth/profile. Capture failures immediately.
-const bankRequest=loadPublicQuestionBanks().then(async data=>({bank:await buildQuestionBank(data),error:null as Error|null})).catch(error=>({bank:[] as Case[],error:error as Error}));
-const {data:{session:authSession},error:sessionError}=await supabase.auth.getSession();if(sessionError)throw new Error('로그인 상태를 확인하지 못했습니다: '+sessionError.message);if(!authSession){setMember(null);setFriendLeaders([]);setAttempts(saved.attempts);const shared=await bankRequest;if(shared.error)throw shared.error;setBank(shared.bank);loadedUser.current=null;setGuest(true);setReady(true);return;}let [{data:rows,error:attemptError},{data:profile},{data:dismissals,error:dismissalError},{data:additions,error:additionError}]=await Promise.all([supabase.from('attempts').select('*').eq('user_id',authSession.user.id).order('created'),supabase.from('profiles').select('nickname,is_admin,group_code').eq('id',authSession.user.id).maybeSingle(),supabase.from('review_dismissals').select('case_id,dismissed_at').eq('user_id',authSession.user.id),supabase.from('review_additions').select('case_id,added_at').eq('user_id',authSession.user.id)]);if(dismissalError||additionError)throw new Error('재심사 목록을 불러오지 못했습니다.');setReviewDismissals(Object.fromEntries((dismissals||[]).map(row=>[row.case_id,row.dismissed_at])));setReviewAdditions(Object.fromEntries((additions||[]).map(row=>[row.case_id,row.added_at])));if(!profile){const nickname=String(authSession.user.user_metadata?.nickname||'심사관').slice(0,20);const {data,error:profileError}=await supabase.from('profiles').insert({id:authSession.user.id,nickname}).select('nickname,is_admin,group_code').single();if(profileError){if(profileError.code==='23505'){const {data:existing}=await supabase.from('profiles').select('nickname,is_admin,group_code').eq('id',authSession.user.id).maybeSingle();if(existing)profile=existing;else{const uniqueName=nickname.slice(0,11)+'-'+authSession.user.id.slice(0,7);const {data:fallback,error:fallbackError}=await supabase.from('profiles').insert({id:authSession.user.id,nickname:uniqueName}).select('nickname,is_admin,group_code').single();if(fallbackError)throw new Error('프로필 생성에 실패했습니다: '+fallbackError.message);profile=fallback;}}else throw new Error('프로필 생성에 실패했습니다: '+profileError.message);}else profile=data;}if(attemptError)throw new Error('서버 기록을 불러오지 못했습니다.');const code=profile?.group_code||'';setMember({id:authSession.user.id,email:authSession.user.email||'',nickname:profile?.nickname||'심사관',isAdmin:!!profile?.is_admin,groupCode:code});setGroupCode(code);setAttempts((rows||[]) as Attempt[]);const shared=await bankRequest;if(shared.error)throw shared.error;setBank(shared.bank);loadedUser.current=authSession.user.id;setGuest(false);setReady(true);}catch(e){setError((e as Error).message);}}
+async function loadData(){
+ const revision=authRevision.current;setError('');
+ try{
+  if(!supabase){clearStudyAccess();loadedUser.current=null;setReady(true);return;}
+  const {data:{session:authSession},error:sessionError}=await supabase.auth.getSession();
+  if(sessionError)throw new Error('로그인 상태를 확인하지 못했습니다: '+sessionError.message);
+  if(revision!==authRevision.current)return;
+  if(!authSession){clearStudyAccess();loadedUser.current=null;setReady(true);return;}
+  const {data:{user},error:userError}=await supabase.auth.getUser();
+  if(revision!==authRevision.current)return;
+  if(userError||!isRegisteredStudyUser(user)){clearStudyAccess();loadedUser.current=null;setReady(true);return;}
+  // Fetch shared questions only after verifying a registered account with Auth.
+  const bankRequest=loadQuestionBanks(authSession.access_token).then(async data=>({bank:await buildQuestionBank(data),error:null as Error|null})).catch(error=>({bank:[] as Case[],error:error as Error}));
+  let [{data:rows,error:attemptError},{data:profile,error:profileLookupError},{data:dismissals,error:dismissalError},{data:additions,error:additionError}]=await Promise.all([
+   supabase.from('attempts').select('*').eq('user_id',user.id).order('created'),
+   supabase.from('profiles').select('nickname,is_admin,group_code').eq('id',user.id).maybeSingle(),
+   supabase.from('review_dismissals').select('case_id,dismissed_at').eq('user_id',user.id),
+   supabase.from('review_additions').select('case_id,added_at').eq('user_id',user.id)
+  ]);
+  if(revision!==authRevision.current)return;
+  if(profileLookupError||attemptError)throw new Error('서버 기록을 불러오지 못했습니다.');
+  if(dismissalError||additionError)throw new Error('재심사 목록을 불러오지 못했습니다.');
+  if(!profile){
+   const nickname=String(user.user_metadata?.nickname||'심사관').slice(0,20);
+   const {data,error:profileError}=await supabase.from('profiles').insert({id:user.id,nickname}).select('nickname,is_admin,group_code').single();
+   if(profileError){
+    if(profileError.code!=='23505')throw new Error('프로필 생성에 실패했습니다: '+profileError.message);
+    const {data:existing}=await supabase.from('profiles').select('nickname,is_admin,group_code').eq('id',user.id).maybeSingle();
+    if(existing)profile=existing;
+    else{
+     const uniqueName=nickname.slice(0,11)+'-'+user.id.slice(0,7);
+     const {data:fallback,error:fallbackError}=await supabase.from('profiles').insert({id:user.id,nickname:uniqueName}).select('nickname,is_admin,group_code').single();
+     if(fallbackError)throw new Error('프로필 생성에 실패했습니다: '+fallbackError.message);
+     profile=fallback;
+    }
+   }else profile=data;
+  }
+  const shared=await bankRequest;
+  if(revision!==authRevision.current)return;
+  if(shared.error)throw shared.error;
+  const code=profile?.group_code||'';
+  studyUser.current=user.id;loadedUser.current=user.id;
+  setMember({id:user.id,email:user.email||'',nickname:profile?.nickname||'심사관',isAdmin:!!profile?.is_admin,groupCode:code});
+  setGroupCode(code);setAttempts((rows||[]) as Attempt[]);setBank(shared.bank);
+  setReviewDismissals(Object.fromEntries((dismissals||[]).map(row=>[row.case_id,row.dismissed_at])));
+  setReviewAdditions(Object.fromEntries((additions||[]).map(row=>[row.case_id,row.added_at])));
+  setReady(true);
+ }catch(e){if(revision===authRevision.current){clearStudyAccess();setReady(false);setError((e as Error).message);}}
+}
 useEffect(()=>{
   setFriendLeaders([]);
   if(tab!=='stats'||!member?.groupCode||!supabase)return;
@@ -60,17 +110,21 @@ useEffect(()=>{
   void supabase.rpc('friend_leaderboard').then(({data,error})=>{if(active&&!error)setFriendLeaders(data||[]);});
   return()=>{active=false;};
 },[tab,member?.id,member?.groupCode]);
-async function accountAction(){if(!supabase){setError('회원 서버 설정이 없습니다. NEXT_PUBLIC_SUPABASE_URL과 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY를 확인하세요.');return;}if(busy)return;setBusy(true);setError('');try{if(member){if(!confirm('로그아웃할까요?'))return;try{await unsubscribeCurrentDevice();}catch{}const {error}=await supabase.auth.signOut();if(error)throw error;setMember(null);setToast('로그아웃했습니다.');await loadOnce.current.wait();await load();return;}const signup=confirm('확인을 누르면 회원가입, 취소를 누르면 로그인입니다.');const email=prompt('이메일 주소를 입력하세요.')?.trim();if(!email)return;const password=prompt('비밀번호를 입력하세요. (8자 이상 권장)');if(!password)return;if(signup){const nickname=prompt('앱에서 표시할 닉네임을 입력하세요. (2~20자)')?.trim();if(!nickname)return;if(nickname.length<2||nickname.length>20){setError('닉네임은 2~20자로 입력하세요.');return;}const {data,error}=await supabase.auth.signUp({email,password,options:{data:{nickname}}});if(error)throw error;setToast(data.session?'회원가입되었습니다.':'인증 메일을 확인한 뒤 로그인하세요.');}else{const {error}=await supabase.auth.signInWithPassword({email,password});if(error)throw error;setToast('로그인했습니다.');}await loadOnce.current.wait();await load();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+async function accountAction(){if(!supabase){setError('회원 서버 설정이 없습니다. NEXT_PUBLIC_SUPABASE_URL과 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY를 확인하세요.');return;}if(busy)return;setBusy(true);setError('');try{if(member){if(!confirm('로그아웃할까요?'))return;try{await unsubscribeCurrentDevice();}catch{}const {error}=await supabase.auth.signOut();if(error)throw error;authRevision.current++;clearStudyAccess();setReady(false);setToast('로그아웃했습니다.');await loadOnce.current.wait();await load();return;}const signup=confirm('확인을 누르면 회원가입, 취소를 누르면 로그인입니다.');const email=prompt('이메일 주소를 입력하세요.')?.trim();if(!email)return;const password=prompt('비밀번호를 입력하세요. (8자 이상 권장)');if(!password)return;if(signup){const nickname=prompt('앱에서 표시할 닉네임을 입력하세요. (2~20자)')?.trim();if(!nickname)return;if(nickname.length<2||nickname.length>20){setError('닉네임은 2~20자로 입력하세요.');return;}const {data,error}=await supabase.auth.signUp({email,password,options:{data:{nickname}}});if(error)throw error;setToast(data.session?'회원가입되었습니다.':'인증 메일을 확인한 뒤 로그인하세요.');}else{const {error}=await supabase.auth.signInWithPassword({email,password});if(error)throw error;setToast('로그인했습니다.');}await loadOnce.current.wait();await load();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
 useEffect(()=>{
  let active=true;const timers=new Set<ReturnType<typeof setTimeout>>();
  void load();if(!supabase)return;
  const {data:{subscription}}=supabase.auth.onAuthStateChange((event,authSession)=>{
   if(!['SIGNED_IN','SIGNED_OUT','USER_UPDATED'].includes(event))return;
+  const nextUser=isRegisteredStudyUser(authSession?.user)?authSession!.user.id:null;
+  if(event==='SIGNED_OUT'||(loadedUser.current!==undefined&&nextUser!==loadedUser.current)){
+   authRevision.current++;clearStudyAccess();setReady(nextUser===null);
+  }
   // Leave the auth callback (and its lock) before calling any Supabase API.
   const timer=setTimeout(async()=>{
    timers.delete(timer);if(!active)return;
    await loadOnce.current.wait();
-   if(!active||!shouldReloadForAuth(event,loadedUser.current,authSession?.user.id||null))return;
+   if(!active||!shouldReloadForAuth(event,loadedUser.current,nextUser))return;
    setReady(false);await load();
   },0);timers.add(timer);
  });
@@ -108,9 +162,11 @@ useEffect(()=>{const openNudge=()=>{if(lock.current)return;setTab('nudge');setSe
 useEffect(()=>{if(new URLSearchParams(window.location.search).get('screen')==='today'){const timer=window.setTimeout(()=>{setTab('home');setSession(null);setFinished(false);document.getElementById('today-learning')?.scrollIntoView({behavior:'smooth'});},0);return()=>window.clearTimeout(timer);}},[]);
 async function installApp(){if(!installPrompt){setToast('브라우저 메뉴에서 “홈 화면에 추가”를 선택하면 앱처럼 설치할 수 있습니다.');return;}installPrompt.prompt();await installPrompt.userChoice;setInstallPrompt(null);}
 async function begin(queue:Case[],mode:string){
- if(!ready||!queue.length||lock.current)return;
+ if(!requireMember()||!ready||!queue.length||lock.current)return;
+ const revision=authRevision.current;
  try{
   const {refreshRuleCase}=await import('../lib/rule-bank');
+  if(revision!==authRevision.current||!requireMember())return;
   const first=mode==='free'?nextFreeStudyCase(queue,[]):null;
   const generated=(mode==='free'?(first?[first.item]:[]):queue).map(refreshRuleCase);
   if(!generated.length)return;generated.forEach(assertReadyCase);
@@ -119,14 +175,16 @@ async function begin(queue:Case[],mode:string){
   startTime.current=Date.now();requestId.current=createUUID();window.scrollTo({top:0,behavior:'instant'});
  }catch(e){setError((e as Error).message);}
 }
-async function answer(choice:boolean|null){if(!current||!session||result!==null||lock.current)return;lock.current=true;setBusy(true);setError('');try{const correct=choice!==null&&current.answer===choice;const attempt:Attempt={id:requestId.current,case_id:current.id,mode:session.mode,chapter:current.chapter,choice:choice===null?null:Number(choice),correct:Number(correct),hint:usedHint?1:0,duration:Math.min(86400,Math.floor((Date.now()-startTime.current)/1000)),created:new Date().toISOString()};const nextAttempts=[...attempts,attempt];if(member&&supabase){const {error}=await supabase.from('attempts').insert({...attempt,user_id:member.id,choice:choice,correct,hint:usedHint});if(error)throw new Error('서버에 기록을 저장하지 못했습니다.');}else writeProgress({attempts:nextAttempts,cases:bank.filter(c=>c.id.startsWith('custom-'))});setAttempts(nextAttempts);setHint(false);setAnsweredUnknown(choice===null);setResult(correct);if(sound){try{const ctx=new AudioContext();const osc=ctx.createOscillator();const gain=ctx.createGain();osc.type="triangle";osc.frequency.setValueAtTime(correct?520:180,ctx.currentTime);osc.frequency.exponentialRampToValueAtTime(correct?800:90,ctx.currentTime+.14);gain.gain.setValueAtTime(.1,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.2);osc.connect(gain);gain.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+.2);osc.onended=()=>ctx.close();}catch{}}setSession({...session,right:session.right+(correct?1:0),answered:session.answered+1,unknown:session.unknown+(choice===null?1:0)});}catch(e){setError((e as Error).message);}finally{setBusy(false);lock.current=false;}}
-async function recordStoryAttempt(item:Case,choice:boolean|null,correct:boolean,duration:number){if(lock.current)throw new Error('이전 심사 기록을 저장하고 있습니다.');lock.current=true;setBusy(true);setError('');try{const attempt:Attempt={id:createUUID(),case_id:item.id,mode:'story',chapter:item.chapter,choice:choice===null?null:Number(choice),correct:Number(correct),hint:0,duration:Math.min(86400,Math.max(0,duration)),created:new Date().toISOString()};const nextAttempts=[...attempts,attempt];if(member&&supabase){const {error}=await supabase.from('attempts').insert({...attempt,user_id:member.id,choice,correct,hint:false});if(error)throw new Error('서버에 기록을 저장하지 못했습니다.');}else writeProgress({attempts:nextAttempts,cases:bank.filter(c=>c.id.startsWith('custom-'))});setAttempts(nextAttempts);}catch(e){setError((e as Error).message);throw e;}finally{setBusy(false);lock.current=false;}}
+async function answer(choice:boolean|null){if(!requireMember())return;const revision=authRevision.current;if(!current||!session||result!==null||lock.current)return;lock.current=true;setBusy(true);setError('');try{const correct=choice!==null&&current.answer===choice;const attempt:Attempt={id:requestId.current,case_id:current.id,mode:session.mode,chapter:current.chapter,choice:choice===null?null:Number(choice),correct:Number(correct),hint:usedHint?1:0,duration:Math.min(86400,Math.floor((Date.now()-startTime.current)/1000)),created:new Date().toISOString()};const nextAttempts=[...attempts,attempt];if(member&&supabase){const {error}=await supabase.from('attempts').insert({...attempt,user_id:member.id,choice:choice,correct,hint:usedHint});if(error)throw new Error('서버에 기록을 저장하지 못했습니다.');}else throw new Error(LOGIN_REQUIRED_MESSAGE);if(revision!==authRevision.current)return;setAttempts(nextAttempts);setHint(false);setAnsweredUnknown(choice===null);setResult(correct);if(sound){try{const ctx=new AudioContext();const osc=ctx.createOscillator();const gain=ctx.createGain();osc.type="triangle";osc.frequency.setValueAtTime(correct?520:180,ctx.currentTime);osc.frequency.exponentialRampToValueAtTime(correct?800:90,ctx.currentTime+.14);gain.gain.setValueAtTime(.1,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.2);osc.connect(gain);gain.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+.2);osc.onended=()=>ctx.close();}catch{}}setSession({...session,right:session.right+(correct?1:0),answered:session.answered+1,unknown:session.unknown+(choice===null?1:0)});}catch(e){setError((e as Error).message);}finally{setBusy(false);lock.current=false;}}
+async function recordStoryAttempt(item:Case,choice:boolean|null,correct:boolean,duration:number){if(!requireMember())throw new Error(LOGIN_REQUIRED_MESSAGE);const revision=authRevision.current;if(lock.current)throw new Error('이전 심사 기록을 저장하고 있습니다.');lock.current=true;setBusy(true);setError('');try{const attempt:Attempt={id:createUUID(),case_id:item.id,mode:'story',chapter:item.chapter,choice:choice===null?null:Number(choice),correct:Number(correct),hint:0,duration:Math.min(86400,Math.max(0,duration)),created:new Date().toISOString()};const nextAttempts=[...attempts,attempt];if(member&&supabase){const {error}=await supabase.from('attempts').insert({...attempt,user_id:member.id,choice,correct,hint:false});if(error)throw new Error('서버에 기록을 저장하지 못했습니다.');}else throw new Error(LOGIN_REQUIRED_MESSAGE);if(revision!==authRevision.current)return;setAttempts(nextAttempts);}catch(e){setError((e as Error).message);throw e;}finally{setBusy(false);lock.current=false;}}
 async function next(){
+ if(!requireMember())return;
+ const revision=authRevision.current;
  if(!session||result===null||busy||lock.current)return;
  if(session.mode==='free'){
   try{
    const draw=nextFreeStudyCase(session.pool,session.seenIds,current?.id);if(!draw)return;
-   const {refreshRuleCase}=await import('../lib/rule-bank');const item=refreshRuleCase(draw.item);assertReadyCase(item);
+   const {refreshRuleCase}=await import('../lib/rule-bank');if(revision!==authRevision.current||!requireMember())return;const item=refreshRuleCase(draw.item);assertReadyCase(item);
    setSession({...session,queue:[item],index:0,seenIds:draw.seenIds});
   }catch(e){setError((e as Error).message);return;}
  }else{
@@ -136,29 +194,35 @@ async function next(){
  setResult(null);setAnsweredUnknown(false);setHint(false);setUsedHint(false);
  startTime.current=Date.now();requestId.current=createUUID();window.scrollTo({top:0,left:0,behavior:'instant'});
 }
-function finishLearning(){if(!session||busy||lock.current)return;setHint(false);setFinished(true);window.scrollTo({top:0,behavior:'instant'});}
+function finishLearning(){if(!requireMember())return;if(!session||busy||lock.current)return;setHint(false);setFinished(true);window.scrollTo({top:0,behavior:'instant'});}
 function freeQueue(){return bank.filter(c=>(filter==='전체'||lawCategory(c.law)===filter)&&(difficulty==='전체'||c.difficulty===difficulty));}
 async function importCases(file:File){setBusy(true);try{if(!member?.isAdmin||!supabase)throw Error('관리자 계정으로 로그인해야 문항을 저장할 수 있습니다.');if(file.name.toLowerCase().endsWith('.xlsx')){if(file.size>10000000)throw Error('엑셀 파일은 10MB 이하만 업로드할 수 있습니다.');const {parseRuleBank}=await import('../lib/rule-bank');const ruleBank=await parseRuleBank(file);if(ruleBank.rules.length>1000)throw Error('검수 통과 규칙은 1,000개 이하만 업로드할 수 있습니다.');const {data:existing,error:lookupError}=await supabase.from('shared_cases').select('id,payload').eq('payload->>name',ruleBank.name);if(lookupError)throw Error('기존 문제은행을 확인하지 못했습니다.');const id=existing?.[0]?.id||await ruleBankStorageId(ruleBank);const {error}=await supabase.from('shared_cases').upsert({id,payload:ruleBank,updated_at:new Date().toISOString()});if(error)throw Error('자동출제 규칙 저장에 실패했습니다. 관리자 권한을 확인하세요.');await load();setToast(`${ruleBank.rules.length}개 규칙을 저장했습니다. 자유 심사에서 무작위 승인·반려 사례가 출제됩니다.`);return;}if(file.size>2000000)throw Error('JSON 파일은 2MB 이하만 업로드할 수 있습니다.');const list=JSON.parse(await file.text());if(!Array.isArray(list)||!list.length||list.length>200)throw Error('1~200개 문항의 JSON 배열이 필요합니다.');const custom=list.filter((c:unknown):c is Case=>!!c&&typeof c==='object'&&typeof (c as Case).id==='string'&&(c as Case).id.startsWith('custom-'));if(custom.length!==list.length)throw Error('문항 ID는 custom-으로 시작해야 합니다.');custom.forEach(assertReadyCase);const {error}=await supabase.from('shared_cases').upsert(custom.map(payload=>({id:payload.id,payload,updated_at:new Date().toISOString()})));if(error)throw Error('공용 문항 저장에 실패했습니다. 관리자 권한을 확인하세요.');await load();setToast(`${list.length}개 문항을 모든 사용자에게 저장했습니다.`);}catch(e){setError((e as Error).message);}finally{setBusy(false);if(fileRef.current)fileRef.current.value='';}}
 async function clearSharedCases(){if(!member?.isAdmin||!supabase)return;if(!confirm('기존 공용 문항을 모두 삭제할까요? 학습 기록은 남습니다.'))return;setBusy(true);setError('');try{const {error}=await supabase.from('shared_cases').delete().neq('id','');if(error)throw Error('기존 공용 문항을 삭제하지 못했습니다. 관리자 권한을 확인하세요.');const saved=readProgress();writeProgress({attempts:saved.attempts,cases:[],ruleBanks:[]});await load();setToast('기존 공용 문항을 모두 비웠습니다. 새 엑셀 파일을 올리세요.');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
 async function addReviewCase(item:Case){
+ if(!requireMember())return;
+ const revision=authRevision.current;
  if(busy||lock.current||inReview.has(item.id))return;
  lock.current=true;setBusy(true);setError('');
  try{
   const addedAt=new Date(Math.max(Date.now(),(Date.parse(reviewDismissals[item.id]||'')||0)+1)).toISOString();
   if(member&&supabase){const {error}=await supabase.from('review_additions').upsert({user_id:member.id,case_id:item.id,added_at:addedAt},{onConflict:'user_id,case_id'});if(error)throw Error('오답 재심사함에 추가하지 못했습니다. 다시 시도해 주세요.');}
-  else localStorage.setItem(REVIEW_ADDITIONS_KEY,JSON.stringify({...reviewAdditions,[item.id]:addedAt}));
+  else throw new Error(LOGIN_REQUIRED_MESSAGE);
+  if(revision!==authRevision.current)return;
   setReviewAdditions(current=>({...current,[item.id]:addedAt}));
   setToast('오답 재심사함에 추가했습니다. 정답 기록은 유지됩니다.');
  }catch(e){setError((e as Error).message);}finally{setBusy(false);lock.current=false;}
 }
 async function removeReviewCase(caseId:string,advance=false){
+ if(!requireMember())return;
+ const revision=authRevision.current;
  if(busy||lock.current)return;
  if(advance&&(!session||session.mode!=='review'||result===null||current?.id!==caseId))return;
  lock.current=true;setBusy(true);setError('');
  try{
   const dismissedAt=new Date().toISOString();
   if(member&&supabase){const {error}=await supabase.from('review_dismissals').upsert({user_id:member.id,case_id:caseId,dismissed_at:dismissedAt},{onConflict:'user_id,case_id'});if(error)throw Error('재심사 목록에서 제거하지 못했습니다.');}
-  else localStorage.setItem(REVIEW_DISMISSALS_KEY,JSON.stringify({...reviewDismissals,[caseId]:dismissedAt}));
+  else throw new Error(LOGIN_REQUIRED_MESSAGE);
+  if(revision!==authRevision.current)return;
   setReviewDismissals(current=>({...current,[caseId]:dismissedAt}));
   setToast('재심사 목록에서 제거했습니다. 학습 기록은 유지됩니다.');
   if(advance&&session){
@@ -172,6 +236,8 @@ async function removeReviewCase(caseId:string,advance=false){
  }catch(e){setError((e as Error).message);}finally{setBusy(false);lock.current=false;}
 }
 async function clearReviewCases(){
+ if(!requireMember())return;
+ const revision=authRevision.current;
  if(!ready||busy||lock.current||!wrong.length)return;
  lock.current=true;setBusy(true);setError('');
  try{
@@ -181,9 +247,8 @@ async function clearReviewCases(){
    const rows=Object.keys(dismissed).map(caseId=>({user_id:member.id,case_id:caseId,dismissed_at:dismissedAt}));
    const {error}=await supabase.from('review_dismissals').upsert(rows,{onConflict:'user_id,case_id'});
    if(error)throw Error('재심사함을 비우지 못했습니다. 다시 시도해 주세요.');
-  }else{
-   localStorage.setItem(REVIEW_DISMISSALS_KEY,JSON.stringify({...reviewDismissals,...dismissed}));
-  }
+  }else throw new Error(LOGIN_REQUIRED_MESSAGE);
+  if(revision!==authRevision.current)return;
   setReviewDismissals(current=>({...current,...dismissed}));
   setToast('오답 재심사함을 비웠습니다. 학습 기록은 유지됩니다.');
  }catch(e){setError((e as Error).message);}finally{setBusy(false);lock.current=false;}
@@ -194,12 +259,12 @@ async function share(){const text=`보건법규 심사관 · ${streak}일 연속
 const visibleNav=member?.isAdmin?nav:nav.filter(([key])=>key!=='bank'&&key!=='admin-records');
 return <div className={`app game-app ${session&&!finished?'playing':''} ${tab==='story'?'story-mode':''}`}><div className="office-scenery" aria-hidden="true"/>
 <div className="workspace"><header className="game-header"><a className="brand" href="/" aria-label="심사실 홈"><Scale size={25}/><span>보건법규 심사관<small>HEALTH LAW · REVIEW OFFICE</small></span></a><button className="install-button account-button" aria-label={member?member.nickname:'로그인 · 가입'} onClick={accountAction}><UserRound size={16}/><span>{member?member.nickname:'로그인 · 가입'}</span></button><ReadingSettings/><NotificationButton key={member?.id||'guest'} userId={member?.id||null} onShowInstallGuide={()=>window.dispatchEvent(new Event('open-install-guide'))}/><InstallGuide installAvailable={!!installPrompt} onInstall={installApp}/><nav aria-label="게임 메뉴">{visibleNav.map(([key,label,Icon])=><button key={key} className={tab===key?'active':''} onClick={()=>go(key)} disabled={busy}><Icon size={17}/><span>{label}</span>{key==='review'&&wrong.length>0&&<b>{wrong.length}</b>}</button>)}</nav></header>
-{tab==='home'&&ready&&!bank.length&&<section className="notice"><strong>등록된 공용 문제가 없습니다.</strong><p>{member?.isAdmin?'문항 관리에서 검수한 엑셀을 공용 문항 저장으로 등록하면 학습을 시작할 수 있습니다.':'관리자가 문제를 등록하면 학습을 시작할 수 있습니다.'}</p>{member?.isAdmin&&<button className="secondary" onClick={()=>go('bank')}>문항 관리로 이동</button>}</section>}
-{tab==='home'&&<NudgeScreen key={member?.id||'guest'} userId={member?.id} compact groupCode={member?.groupCode||""} completedToday={todayAttempts.length>=DAILY_STUDY_TARGET} onGoToday={goToday}/>}
+{member&&tab==='home'&&ready&&!bank.length&&<section className="notice"><strong>등록된 공용 문제가 없습니다.</strong><p>{member?.isAdmin?'문항 관리에서 검수한 엑셀을 공용 문항 저장으로 등록하면 학습을 시작할 수 있습니다.':'관리자가 문제를 등록하면 학습을 시작할 수 있습니다.'}</p>{member?.isAdmin&&<button className="secondary" onClick={()=>go('bank')}>문항 관리로 이동</button>}</section>}
+{member&&tab==='home'&&<NudgeScreen key={member?.id||'guest'} userId={member?.id} compact groupCode={member?.groupCode||""} completedToday={todayAttempts.length>=DAILY_STUDY_TARGET} onGoToday={goToday}/>}
 <div className="game-hud"><div><span className="hud-chip">근무일 <b>{days.size+(!days.has(today)?1:0)}일차</b></span><span className="hud-chip"><ShieldCheck size={15}/> {chapters[level].role}</span><span className="hud-chip">{session?.mode==='free'?<>이번 학습 <b>{session.answered}건 완료</b></>:<>사건 <b>{session?String(session.index+1).padStart(2,'0'):String(todayAttempts.length).padStart(2,'0')} / {session?String(session.queue.length).padStart(2,'0'):'05'}</b></>}</span></div><div><span className="hud-chip"><Flame size={16}/> {streak}일</span><span className="hud-chip">Lv. {level+1} · {xp} EXP</span><button className="hud-chip" onClick={()=>setSound(!sound)} aria-pressed={sound}>효과음 {sound?'ON':'OFF'}</button></div></div>
 <main>
 {toast&&<div className="toast" role="status">{toast}</div>}{error&&<div className="error" role="alert">{error} {!ready&&<button onClick={load}>다시 불러오기</button>}</div>}{!ready&&!error&&<div className="notice">학습 기록을 불러오는 중입니다…</div>}
-{session?finished?<section className="completion panel"><div className="finish-icon"><CheckCircle2 size={48}/></div><div className="eyebrow">학습 완료</div><h1>이번 학습 결과</h1><p>총 {sessionSummary!.solved}문제 중 {sessionSummary!.correct}문제 정답 · 오늘 누적 {todayAttempts.length}건</p><div className="stats-grid"><Stat label="푼 문제 수" value={`${sessionSummary!.solved}문제`} sub="답변을 저장한 문제만 집계"/><Stat label="정답률" value={`${sessionSummary!.accuracy}%`} sub={`${sessionSummary!.correct}문제 정답 · ${sessionSummary!.incorrect}문제 오답`}/><Stat label="모르겠음" value={`${sessionSummary!.unknown}문제`} sub="오답과 재심사에 포함"/></div><button className="primary" onClick={()=>go(tab)}>심사실로 돌아가기 <ArrowRight size={18}/></button>{wrong.length>0&&<button className="secondary" onClick={()=>begin(wrong.slice(0,5),'review')}>오답 바로 재심사</button>}</section>:<>
+{!ready?null:!member?<StudyLoginGate onLogin={()=>void accountAction()} busy={busy}/>:session?finished?<section className="completion panel"><div className="finish-icon"><CheckCircle2 size={48}/></div><div className="eyebrow">학습 완료</div><h1>이번 학습 결과</h1><p>총 {sessionSummary!.solved}문제 중 {sessionSummary!.correct}문제 정답 · 오늘 누적 {todayAttempts.length}건</p><div className="stats-grid"><Stat label="푼 문제 수" value={`${sessionSummary!.solved}문제`} sub="답변을 저장한 문제만 집계"/><Stat label="정답률" value={`${sessionSummary!.accuracy}%`} sub={`${sessionSummary!.correct}문제 정답 · ${sessionSummary!.incorrect}문제 오답`}/><Stat label="모르겠음" value={`${sessionSummary!.unknown}문제`} sub="오답과 재심사에 포함"/></div><button className="primary" onClick={()=>go(tab)}>심사실로 돌아가기 <ArrowRight size={18}/></button>{wrong.length>0&&<button className="secondary" onClick={()=>begin(wrong.slice(0,5),'review')}>오답 바로 재심사</button>}</section>:<>
 {session.mode==='free'&&<div className="study-session-toolbar"><span>이번 학습 <b>{session.answered}문제 완료</b></span><button className="primary" disabled={busy} onClick={finishLearning}>학습 완료하기</button></div>}
 <div className="scene-window"><div className="scene-label"><span>HEALTH LAW OFFICE</span><h2>{modes[session.mode]}</h2><button className="text-button" onClick={()=>go(tab)} disabled={busy}><ArrowLeft size={16}/> 업무 선택으로</button></div><div className="npc-dialog"><strong>{current!.sender}</strong><p>{result===null?'접수 서류를 제출했습니다. 법령 기준에 맞는지 심사 부탁드립니다.':result?'확인 감사합니다. 다음 절차를 준비하겠습니다.':'알겠습니다. 검토하신 법령 기준을 다시 확인하겠습니다.'}</p></div></div>
 <div className="desk-workspace" key={current!.id}><section className={`document ${result===null?'':'case-filed'} ${result===true?'case-correct':result===false?'case-incorrect':''}`}><div className="section-bar"><b>1</b> 민원 접수 <span>접수 서류</span></div><div className="document-body"><div className="chips"><span>{current!.law}</span><span>{current!.difficulty}</span><span>{session.mode==='audit'?'감사 재검토':'접수 완료'}</span></div><h1>{studentCaseTitle(current!)}</h1><CaseText className="case-body" text={caseNarrative(current!)}/>{result!==null&&!answeredUnknown&&<div className={`ink-stamp ${currentDecision?'ink-green':'ink-red'}`} role="img" aria-label={result?'정답':'오답'}>{currentDecision?'승인':'반려'}</div>}<div className="document-foot">제출자: {current!.sender} · 학습용 가상 사건</div></div></section>
@@ -207,7 +272,7 @@ return <div className={`app game-app ${session&&!finished?'playing':''} ${tab===
 <div className="decision-console"><section className={`result-panel ${result===false?'wrong-result':''}`} role="status"><div className="section-bar"><b>4</b> 결과 / 해설</div><div className="result-copy">{result===null?<><h3>심사를 기다리고 있습니다.</h3><p>서류가 법령에 적합하면 승인,<br/>미충족 사항이 있으면 반려하세요.</p></>:<><h3>{answeredUnknown?`복습에 추가했습니다 · 정답은 ${current!.answer?'승인':'반려'}`:result?`정답입니다 · ${current!.answer?'승인':'반려'}`:`오답입니다 · 정답은 ${current!.answer?'승인':'반려'}` }</h3><CaseText text={current!.explanation}/>{result===true&&<ReviewAddButton added={inReview.has(current!.id)} busy={busy} onAdd={()=>void addReviewCase(current!)}/>}</>}</div></section><section className="stamp-panel"><div className="section-bar"><b>3</b> 판단 <span>도장을 선택하세요</span></div><div className="decision-buttons"><button className="approve" disabled={busy||result!==null} onClick={()=>answer(true)}><Check size={26}/><span>승인<small>요건 충족</small></span></button><button className="reject" disabled={busy||result!==null} onClick={()=>answer(false)}><X size={26}/><span>반려<small>보완 필요</small></span></button><button className="unknown" disabled={busy||result!==null} onClick={()=>answer(null)}><span>모르겠음<small>오답 재심사에 추가</small></span></button></div><p className="stamp-hint">{busy?'심사 기록 저장 중…':result===null?'제출 서류와 관련 법령을 검토하세요.':`처리 결과: ${current!.answer?'승인':'반려'}`}</p></section><section className="growth-panel"><div className="section-bar"><b>5</b> 성장 <span>{result===null?'':result?'+20 EXP':'−5 EXP'}</span></div><div className="growth-body"><div className="growth-level"><ShieldCheck/><strong>Lv. {level+1}</strong><span>{xp} EXP</span></div><Progress value={level===4?100:xp%100}/><small>{chapters[level].role}</small><button className="primary full" disabled={result===null||busy} onClick={next}>{session.mode==='free'?'다음 민원 접수':session.index===session.queue.length-1?'근무 결과 확인':'다음 민원 접수'}<ArrowRight size={17}/></button>{session.mode==='review'&&result!==null&&<button className="secondary full" disabled={busy} onClick={()=>void removeReviewCase(current!.id,true)}>재심사 목록에서 제거</button>}</div></section></div></>:
 
 <>
-{tab==='home'&&<><div className="scene-window home-scene"><div className="scene-label"><span>보건행정 심사실 · OPEN</span><h1>심사관님,<br/>오늘의 민원이 도착했습니다.</h1><p>서류를 읽고, 법전을 펼치고,<br/>당신의 판단을 찍어 주세요.</p></div><div className="npc-dialog"><strong>선임 심사관</strong><p>어서 오세요! 오늘은 {Math.max(0,DAILY_STUDY_TARGET-todayAttempts.length)}건의 사건이 기다리고 있어요. 준비되면 업무를 시작해 주세요.</p></div></div><div className="start-desk"><section id="today-learning" className="dispatch-folder"><div className="section-bar"><b>01</b> 오늘의 배정 업무 <span>사건 심사실</span></div><div className="folder-content"><span className="eyebrow">DAILY ASSIGNMENT</span><h2>오늘의 사건 {DAILY_STUDY_TARGET}건</h2><p>{laws.length?laws.join(' · '):'등록된 보건법규'}<br/>서류 심사부터 판단, 해설까지 한 번에.</p><div className="mission-row"><strong>{Math.min(DAILY_STUDY_TARGET,todayAttempts.length)}<small> / {DAILY_STUDY_TARGET}건 처리</small></strong><span>{todayAttempts.length>=DAILY_STUDY_TARGET?'오늘의 임무 완료':'심사 대기 중'}</span></div><Progress value={todayAttempts.length/DAILY_STUDY_TARGET*100}/><button className="primary start-button" disabled={!ready||!bank.length} onClick={()=>{setTab('free');begin(freeQueue(),'free')}}><Stamp size={22}/> 바로 근무 시작 <ArrowRight size={20}/></button><p className="guest-note">{guest?'로그인 없이 플레이 · 이 브라우저의 게스트 기록으로 이어집니다.':'기존 계정의 학습 기록으로 이어집니다.'}</p></div></section><div className="desk-menu"><button className="menu-book" onClick={()=>go('story')}><Waypoints size={28}/><div><span>STORY MODE</span><h2>심사관의 업무일지</h2><p>12개 챕터 캠페인 · 첫 장 의료법 심사</p></div><ChevronRight/></button><button className="menu-book free-book" onClick={()=>go('free')}><BookOpen size={28}/><div><span>FREE REVIEW</span><h2>단원별 자유 심사</h2><p>원하는 법령을 골라 집중 심사</p></div><ChevronRight/></button><button className="menu-book audit-book" onClick={()=>go('review')}><RotateCcw size={27}/><div><span>AUDIT DESK</span><h2>감사 재심사 {wrong.length}건</h2><p>놓친 기준을 다시 확인하고 종결하세요.</p></div><ChevronRight/></button></div></div><div className="office-ledger"><span><Flame size={18}/> {streak}일 연속 근무</span><span>누적 심사 <b>{attempts.length}건</b></span><span>정답률 <b>{attempts.length?accuracy+'%':'—'}</b></span><span>직급 <b>Lv. {level+1}</b></span></div></>}
+{tab==='home'&&<><div className="scene-window home-scene"><div className="scene-label"><span>보건행정 심사실 · OPEN</span><h1>심사관님,<br/>오늘의 민원이 도착했습니다.</h1><p>서류를 읽고, 법전을 펼치고,<br/>당신의 판단을 찍어 주세요.</p></div><div className="npc-dialog"><strong>선임 심사관</strong><p>어서 오세요! 오늘은 {Math.max(0,DAILY_STUDY_TARGET-todayAttempts.length)}건의 사건이 기다리고 있어요. 준비되면 업무를 시작해 주세요.</p></div></div><div className="start-desk"><section id="today-learning" className="dispatch-folder"><div className="section-bar"><b>01</b> 오늘의 배정 업무 <span>사건 심사실</span></div><div className="folder-content"><span className="eyebrow">DAILY ASSIGNMENT</span><h2>오늘의 사건 {DAILY_STUDY_TARGET}건</h2><p>{laws.length?laws.join(' · '):'등록된 보건법규'}<br/>서류 심사부터 판단, 해설까지 한 번에.</p><div className="mission-row"><strong>{Math.min(DAILY_STUDY_TARGET,todayAttempts.length)}<small> / {DAILY_STUDY_TARGET}건 처리</small></strong><span>{todayAttempts.length>=DAILY_STUDY_TARGET?'오늘의 임무 완료':'심사 대기 중'}</span></div><Progress value={todayAttempts.length/DAILY_STUDY_TARGET*100}/><button className="primary start-button" disabled={!ready||!bank.length} onClick={()=>{setTab('free');begin(freeQueue(),'free')}}><Stamp size={22}/> 바로 근무 시작 <ArrowRight size={20}/></button><p className="guest-note">기존 계정의 학습 기록으로 이어집니다.</p></div></section><div className="desk-menu"><button className="menu-book" onClick={()=>go('story')}><Waypoints size={28}/><div><span>STORY MODE</span><h2>심사관의 업무일지</h2><p>12개 챕터 캠페인 · 첫 장 의료법 심사</p></div><ChevronRight/></button><button className="menu-book free-book" onClick={()=>go('free')}><BookOpen size={28}/><div><span>FREE REVIEW</span><h2>단원별 자유 심사</h2><p>원하는 법령을 골라 집중 심사</p></div><ChevronRight/></button><button className="menu-book audit-book" onClick={()=>go('review')}><RotateCcw size={27}/><div><span>AUDIT DESK</span><h2>감사 재심사 {wrong.length}건</h2><p>놓친 기준을 다시 확인하고 종결하세요.</p></div><ChevronRight/></button></div></div><div className="office-ledger"><span><Flame size={18}/> {streak}일 연속 근무</span><span>누적 심사 <b>{attempts.length}건</b></span><span>정답률 <b>{attempts.length?accuracy+'%':'—'}</b></span><span>직급 <b>Lv. {level+1}</b></span></div></>}
 {tab==='story'&&ready&&<StoryCampaign key={member?.id||'guest'} userId={member?.id||null} bank={bank} experience={xp} storyAttempts={storyAttempts} onAttempt={recordStoryAttempt} reviewCaseIds={inReview} reviewSaving={busy} onAddReview={addReviewCase} onExit={()=>go('home')}/> }
 {tab==='nudge'&&<NudgeScreen key={member?.id||'guest'} userId={member?.id} groupCode={member?.groupCode||''} completedToday={todayAttempts.length>=DAILY_STUDY_TARGET} onGoToday={goToday}/> }
 {tab==='free'&&<><div className="page-heading"><div><div className="eyebrow">FREE REVIEW</div><h1>자유 심사</h1><p>학습할 법령을 골라 원하는 만큼 무작위로 심사하세요. 학습 완료하기를 누르면 이번 학습 결과를 확인합니다.</p></div></div><div className="filter-row"><div className="tabs">{['전체',...laws].map(l=><button key={l} className={filter===l?'selected':''} onClick={()=>setFilter(l)}>{l}</button>)}</div><label>난이도 <select value={difficulty} onChange={e=>setDifficulty(e.target.value)}>{['전체','기초','응용','심화'].map(d=><option key={d}>{d}</option>)}</select></label></div><section className="panel free-start"><div><div className="eyebrow">선택한 심사 범위</div><h2>{filter==='전체'?'전 법령 종합 심사':filter}</h2><p>{difficulty} 난이도 · 법령 도움말 제공</p></div><button className="primary" disabled={!ready||!freeQueue().length} onClick={()=>begin(freeQueue(),'free')}>심사 시작 <ArrowRight size={18}/></button></section><div className="law-grid">{laws.map(l=>{const records=attempts.filter(a=>lawCategory(caseById.get(a.case_id)?.law)===l);return <button className="panel law-card" key={l} onClick={()=>setFilter(l)}><BookOpen size={27}/><h2>{l}</h2><p>원하는 만큼 무작위 심사</p><Progress value={records.length?records.filter(a=>a.correct).length/records.length*100:0}/><small>{records.length?`정답률 ${Math.round(records.filter(a=>a.correct).length/records.length*100)}% · ${records.length}회 풀이`:'아직 심사한 사건이 없습니다.'}</small></button>})}</div></>}
@@ -216,6 +281,6 @@ return <div className={`app game-app ${session&&!finished?'playing':''} ${tab===
 {tab==='stats'&&<><div className="page-heading"><div><div className="eyebrow">LEARNING RECORD</div><h1>작은 심사, 쌓이는 실력</h1>{member?.isAdmin&&<button className="secondary" onClick={()=>go('admin-records')}>전체 사용자 학습 기록 보기</button>}<p>모든 모드의 기록을 하나로 모았습니다. 날짜는 한국 시간을 기준으로 합니다.</p></div><button className="secondary" onClick={exportCSV} disabled={!attempts.length}><Download size={17}/> 기록 CSV</button></div><div className="stats-grid"><Stat label="학습 경험치" value={`${xp} EXP`} sub={`Lv. ${level+1} ${chapters[level].role}`}/><Stat label="총 학습 시간" value={`${Math.round(attempts.reduce((s,a)=>s+a.duration,0)/60)}분`} sub="문항별 응답 시간 합계"/><Stat label="전체 정답률" value={attempts.length?`${accuracy}%`:'—'} sub={`${attempts.length}회 중 ${correctCount}회 정답`}/></div><div className="home-grid"><section className="panel"><h2>최근 7일 학습</h2><div className="bar-chart">{Array.from({length:7},(_,i)=>{const dt=new Date(today+'T12:00:00+09:00');dt.setDate(dt.getDate()-6+i);const count=days.get(day(dt))||0;const max=Math.max(5,...Array.from(days.values()));return <div key={i}><strong>{count}</strong><div className="bar-track"><span style={{height:`${Math.max(2,count/max*100)}%`}}/></div><small>{dt.getMonth()+1}/{dt.getDate()}</small></div>})}</div></section><section className="panel"><h2>모드별 학습</h2>{Object.entries(modes).map(([k,v])=>{const a=attempts.filter(a=>a.mode===k);return <div className="mode-stat" key={k}><span>{v}</span><strong>{a.length}건</strong><small>{a.length?Math.round(a.filter(a=>a.correct).length/a.length*100)+'% 정답':'기록 없음'}</small></div>})}<button className="secondary full" onClick={share}><Share2 size={17}/> 친구에게 보낼 기록 복사</button></section></div><section className="panel"><h2>법령별 학습 현황</h2>{laws.map(l=>{const a=attempts.filter(a=>lawCategory(caseById.get(a.case_id)?.law)===l);return <div className="mastery" key={l}><strong>{l}</strong><Progress value={a.length?a.filter(a=>a.correct).length/a.length*100:0}/><span>{a.length?Math.round(a.filter(a=>a.correct).length/a.length*100)+'%':'—'} · {a.length}회</span></div>})}<p className="small">정답률은 반복 풀이와 도움말 사용을 포함하며 국가고시 예상 성적을 의미하지 않습니다.</p></section><section className="panel"><div className="section-heading"><h2>친구 심사실</h2><span>{member?.groupCode?`그룹 ${member.groupCode}`:'그룹 코드로 친구와 연결하세요'}</span></div>{member?<><div className="button-row"><input className="search" style={{margin:0}} value={groupCode} onChange={e=>setGroupCode(e.target.value)} placeholder="친구와 공유할 그룹 코드 (예: CAPSTONE3)"/><button className="primary" onClick={saveGroup} disabled={busy}>연결</button></div><p className="small">친구가 같은 코드를 입력하면 아래 순위에서 함께 비교됩니다.</p>{friendLeaders.length?<div className="bank-list">{friendLeaders.map((x,i)=><div className="mode-stat" key={x.nickname}><span>{i+1}위 · {x.nickname}</span><strong>{x.correct}점</strong><small>{x.solved}건 · {Math.round(x.accuracy)}%</small></div>)}</div>:<p className="small">아직 같은 그룹의 학습 기록이 없습니다.</p>}</>:<p className="small">로그인하면 친구 그룹을 만들고 학습 기록을 비교할 수 있습니다.</p>}</section></>}
 {tab==='bank'&&member?.isAdmin&&<><div className="page-heading"><div><div className="eyebrow">ADMIN CASE LIBRARY</div><h1>문항 관리</h1><p>이 화면은 관리자에게만 보입니다. 저장한 문항은 모든 이용자에게 적용됩니다.</p></div><button className="secondary" onClick={()=>download('보건법규_문제은행.json',JSON.stringify(bank,null,2))}><Download size={17}/> 문항 내보내기</button></div><section className="notice"><strong>문항 검수 안내</strong><p>추가 전 법령 원문, 정답, 해설, 출처 링크를 확인하세요. 같은 문항 ID로 저장하면 기존 공용 문항을 수정합니다.</p></section><section className="panel import-panel"><div><h3>공용 문항·규칙 추가</h3><p>JSON 문항 또는 검수된 엑셀 규칙 파일을 가져오세요. 엑셀은 값목록과 판정기준에서 승인·반려 사례를 만들어 모든 사용자에게 반영합니다.</p></div><div className="button-row"><button className="secondary" onClick={()=>download('문항_추가_양식.json',JSON.stringify([{...initialCases[0],id:'custom-001',origin:'팀 제작 · 검수자와 검수일 기재'}],null,2))}>양식 받기</button><button className="secondary" disabled={!ready||busy} onClick={clearSharedCases}>기존 공용 문제 비우기</button><button className="primary" disabled={!ready||busy} onClick={()=>fileRef.current?.click()}><Upload size={17}/> 공용 문항 저장</button><input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={e=>e.target.files?.[0]&&importCases(e.target.files[0])}/></div></section><input className="search" placeholder="사건명, 법령, 조문 검색" aria-label="문항 검색" value={search} onChange={e=>setSearch(e.target.value)}/><div className="bank-list">{bank.filter(c=>(c.title+c.law+c.article).includes(search)).map(c=><details className="panel" key={c.id}><summary><span className="case-code">{c.id}</span><div><small>{c.law} {c.article} · {c.difficulty}</small><strong>{c.title}</strong></div><ChevronRight size={18}/></summary><div className="bank-detail"><p>{c.body}</p><ul>{c.details.map((v,i)=><li key={i}>{v}</li>)}</ul><strong>정답: {c.answer?'승인':'반려'}</strong><p>{c.explanation}</p><a href={c.source} target="_blank" rel="noreferrer">국가법령정보센터 원문 ↗</a><p className="small">{c.origin}</p></div></details>)}</div></>}
 </>}
-<footer><span>보건법규 심사관 · 캡스톤 3조</span><span>{guest?'게스트 플레이 · 쿠키 삭제 시 기록 연결이 끊어집니다.':'계정 기록 사용 중'}</span></footer></main><nav className="mobile-tabbar" aria-label="앱 하단 메뉴">{visibleNav.slice(0,5).map(([key,label,Icon])=><button key={key} className={tab===key?'active':''} onClick={()=>go(key)} disabled={busy}><Icon size={21}/><span>{label.replace('오늘의 ','').replace(' 모드','')}</span>{key==='review'&&wrong.length>0&&<b>{wrong.length}</b>}</button>)}</nav></div></div>;
+<footer><span>보건법규 심사관 · 캡스톤 3조</span><span>{member?'계정 기록 사용 중':LOGIN_REQUIRED_MESSAGE}</span></footer></main><nav className="mobile-tabbar" aria-label="앱 하단 메뉴">{visibleNav.slice(0,5).map(([key,label,Icon])=><button key={key} className={tab===key?'active':''} onClick={()=>go(key)} disabled={busy}><Icon size={21}/><span>{label.replace('오늘의 ','').replace(' 모드','')}</span>{key==='review'&&wrong.length>0&&<b>{wrong.length}</b>}</button>)}</nav></div></div>;
 }
 

@@ -25,8 +25,9 @@ drop policy if exists "admins add shared cases" on public.shared_cases;
 drop policy if exists "admins update shared cases" on public.shared_cases;
 drop policy if exists "admins delete shared cases" on public.shared_cases;
 
-create policy "anyone reads shared cases" on public.shared_cases
-for select to anon, authenticated using (true);
+drop policy if exists "registered users read shared cases" on public.shared_cases;
+create policy "registered users read shared cases" on public.shared_cases
+for select to authenticated using (auth.uid() is not null and coalesce((auth.jwt()->>'is_anonymous')::boolean,false)=false);
 create policy "admins add shared cases" on public.shared_cases
 for insert to authenticated with check (public.is_admin());
 create policy "admins update shared cases" on public.shared_cases
@@ -34,7 +35,9 @@ for update to authenticated using (public.is_admin()) with check (public.is_admi
 create policy "admins delete shared cases" on public.shared_cases
 for delete to authenticated using (public.is_admin());
 
-grant select on public.shared_cases to anon, authenticated;
+revoke all on public.shared_cases from anon;
+revoke all on public.shared_cases from public;
+grant select on public.shared_cases to authenticated;
 grant insert, update, delete on public.shared_cases to authenticated;
 grant execute on function public.is_admin() to authenticated;
 

@@ -208,3 +208,9 @@ body{background:#181918;color:#332c21}.office-scenery{position:fixed;inset:0;z-i
 @media(max-width:600px){.study-session-toolbar{padding:9px 11px;font-size:13px}.study-session-toolbar .primary{font-size:14px;padding:10px 12px}.case-copy ol{padding-left:1.5em}}
 
 .review-add-button { margin-block: .75rem; max-width: 100%; white-space: normal; }
+
+/* Logged-out users see a single account entry point in every study mode. */
+.study-login-gate{max-width:640px;margin:48px auto;padding:clamp(24px,5vw,48px);text-align:center;}
+.study-login-gate h1{font-size:clamp(24px,5vw,34px);line-height:1.45;word-break:keep-all;}
+.study-login-gate p{line-height:1.7;word-break:keep-all;}
+.study-login-gate .primary{margin-top:16px;}

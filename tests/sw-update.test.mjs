@@ -15,11 +15,11 @@ function worker(keys){
  return {handlers,deleted,navigated,requests};
 }
 test('upgrade reloads old application tabs once and deletes only application shell caches',async()=>{
- const w=worker(['law-review-shell-v6','law-review-shell-v7','unrelated-cache']);
+ const w=worker(['law-review-shell-v6','law-review-shell-v7','law-review-shell-v8','unrelated-cache']);
  let pending;w.handlers.activate({waitUntil:p=>pending=p});await pending;
- assert.deepEqual(w.deleted,['law-review-shell-v6']);
- assert.deepEqual(w.navigated,['https://example.test/?tab=free&app_update=v7']);
- const clean=worker(['law-review-shell-v7']);clean.handlers.activate({waitUntil:p=>pending=p});await pending;
+ assert.deepEqual(w.deleted,['law-review-shell-v6','law-review-shell-v7']);
+ assert.deepEqual(w.navigated,['https://example.test/?tab=free&app_update=v8']);
+ const clean=worker(['law-review-shell-v8']);clean.handlers.activate({waitUntil:p=>pending=p});await pending;
  assert.deepEqual(clean.navigated,[]);
 });
 test('navigation requests bypass browser HTML cache',async()=>{
