@@ -1,4 +1,4 @@
-const CACHE = 'law-review-shell-v7';
+const CACHE = 'law-review-shell-v8';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -19,7 +19,7 @@ self.addEventListener('activate', (event) => {
       await Promise.all(windows.map(async client => {
         const url = new URL(client.url);
         if (url.origin !== self.location.origin) return;
-        url.searchParams.set('app_update', 'v7');
+        url.searchParams.set('app_update', 'v8');
         try { await client.navigate(url.href); } catch {}
       }));
     }

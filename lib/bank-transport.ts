@@ -1,3 +1,4 @@
+import {LOGIN_REQUIRED_MESSAGE} from './study-access';
 type SharedRow={payload:unknown};
 type PackedBank={version:1;rows:SharedRow[];texts:string[];slots:[number,number,number][]};
 const rulePayload=(value:unknown):value is {kind:string;rules:Record<string,unknown>[]}=>!!value&&typeof value==='object'&&(value as any).kind==='rule-bank'&&Array.isArray((value as any).rules);
@@ -31,9 +32,11 @@ export function unpackQuestionBanks(value:PackedBank):SharedRow[] {
  return rows;
 }
 
-export async function loadPublicQuestionBanks():Promise<SharedRow[]> {
+export async function loadQuestionBanks(accessToken:string):Promise<SharedRow[]> {
+ if(!accessToken)throw Error(LOGIN_REQUIRED_MESSAGE);
  try{
-  const response=await fetch('/api/question-bank',{cache:'no-store',signal:AbortSignal.timeout(15000)});
+  const response=await fetch('/api/question-bank',{headers:{Authorization:`Bearer ${accessToken}`},cache:'no-store',signal:AbortSignal.timeout(15000)});
+  if(response.status===401)throw Error(LOGIN_REQUIRED_MESSAGE);
   if(!response.ok)throw Error('문제은행을 불러오지 못했습니다. 다시 불러오기를 눌러 주세요.');
   return unpackQuestionBanks(await response.json());
  }catch(error){
