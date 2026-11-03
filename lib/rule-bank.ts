@@ -6,6 +6,7 @@ import {insuranceLawBasis,insuranceScenario} from './insurance-explanation';
 import {studentRule} from './student-scenario';
 import {restoreInsuranceNarrative} from './insurance-narrative-migration';
 import {numberedScenario,numberedItems,compactExplanation,hospitalExplanation,insuranceExplanation} from './case-readability';
+import {learnerBasis,selectedCaseReason} from './learner-explanation';
 
 export type RuleBank={kind:'rule-bank';id:string;name:string;rules:Rule[];createdAt:string};
 export type Rule={id:string;lawKey:string;law:string;article:string;title:string;difficulty:string;note:string;scenario:string;approveFacts:Record<string,unknown>[];rejectFacts:Record<string,unknown>[];factLabels:Record<string,string>;factOrder:string[];changedField:string;source:string;lawText:string;approveBody:string;rejectBody:string;judgmentBasis?:string;auditVersion?:number;embeddedFactKeys?:string[];caseExpressions?:Record<string,string>};
@@ -172,7 +173,9 @@ const caseExplanation=(rule:Rule,selected:Record<string,unknown>,approved:boolea
     return `${approved?'승인':'반려'}: 이 위법행위로 인한 피해 결과는 ${outcome.outcome}입니다.\n법정형은 ${outcome.penalty}입니다.\n제시한 “${selected.penalty_text}”${approved?'은 이 기준과 일치합니다.':'은 이 기준과 다릅니다.'}`;
   }
   const hospital=hospitalExplanation(rule,selected,approved);if(hospital)return hospital;
-  const insurance=insuranceExplanation(rule,selected,approved);if(insurance)return insurance;
+  const specific=selectedCaseReason(rule,selected,approved);if(specific)return `${approved?'승인':'반려'}: ${specific}`;
+  const cleanBasis=learnerBasis(rule,selected,approved,insuranceLawBasis(rule));
+  const insurance=insuranceExplanation({...rule,judgmentBasis:cleanBasis},selected,approved);if(insurance)return insurance;
   if(rule.changedField==='training'&&selected.training==='')return '반려: 전문의가 되려는 사람을 수련시키는 기관이라는 필수 요건이 제시되지 않았습니다.';
   // Older stored banks predate changedField. Recover it only when one fact differs.
   const pass=rule.approveFacts[0]||{},reject=rule.rejectFacts[0]||{};
@@ -180,7 +183,7 @@ const caseExplanation=(rule:Rule,selected:Record<string,unknown>,approved:boolea
   const field=text(rule.changedField)||(rule.approveFacts.length&&rule.rejectFacts.length&&differences.length===1?differences[0]:'');
   if(approved&&['document_items','consent_items'].includes(field))return '승인: 이 사례에 적용되는 법정 필수항목이 모두 포함되어 있습니다.';
   if(rule.id==='EM-A45-USE-001')return approved?'승인: 제시한 용도는 법에 명시된 구급차 사용 용도에 해당합니다.':'반려: 혈액·검사대상물·진료용 장비 운반 대신 구호물자 운반을 넣었습니다. 이 문항에서 묻는 명시적 용도 목록과 다릅니다.';
-  if(!field)return `${approved?'승인':'반려'}: ${text(rule.note)||'제출된 사실과 법령 원문의 판단 기준을 확인하세요.'}`;
+  if(!field)return `${approved?'승인':'반려'}: 제출된 사실이 ${rule.title}의 법정 기준에 ${approved?'맞습니다.':'맞지 않습니다.'}`;
   const label=rule.factLabels?.[field]||field;
   const duty=dutyToken(pass[field]);
   if(duty){
@@ -208,7 +211,7 @@ const caseExplanation=(rule:Rule,selected:Record<string,unknown>,approved:boolea
     return `${approved?'승인':'반려'}: ${v}. ${reason}`;
   }
   const stated=factSentence(field,selected[field],label,rule.law);
-  const judgmentBasis=rule.judgmentBasis||insuranceLawBasis(rule);
+  const judgmentBasis=cleanBasis;
   if(judgmentBasis){
     const basis=judgmentBasis;
     if(!approved&&['document_items','consent_items'].includes(field)){
