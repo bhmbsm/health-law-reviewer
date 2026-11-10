@@ -304,3 +304,100 @@ body{background:#181918;color:#332c21}.office-scenery{position:fixed;inset:0;z-i
  .start-button{min-height:64px;font-size:20px}
  .story-campaign:has(.case-desk) .story-top{padding:10px 14px}.story-campaign:has(.case-desk) .story-top h1{font-size:18px;margin:0}
 }
+/* Compact home, law picker (free review) and review inbox by law. */
+@media(max-width:750px){.game-hud{display:none}}
+.home-card{max-width:760px;margin:12px auto 0;background:var(--px-navy);border:3px solid var(--px-line);box-shadow:3px 3px 0 #0009;overflow:hidden}
+.home-art{height:clamp(120px,28vw,220px);background:url('/art/office.png') center 22%/cover no-repeat;image-rendering:pixelated;border-bottom:3px solid var(--px-line)}
+.home-today{display:grid;gap:10px;padding:12px}
+.home-count{display:flex;align-items:center;gap:10px;color:#ead8ae}.home-count strong{font-family:var(--px-font);font-weight:400;font-size:26px;color:var(--px-lamp)}.home-count small{font-size:14px;color:#a9b8c4}.home-count em{margin-left:auto;font-style:normal;font-family:var(--px-font);color:#b9e08f}
+.home-today .progress{height:10px;border-radius:0;background:#0b1118;border:1px solid #3a4c5e}.home-today .progress span{border-radius:0;background:var(--px-lamp)}
+.home-today .start-button{width:100%;min-height:64px;font-size:20px}
+.home-menu{max-width:760px;margin:10px auto 0;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.home-menu button,.law-buttons button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:76px;padding:8px 4px;background:var(--px-paper);color:var(--px-ink);border:3px solid var(--px-line);border-radius:0;box-shadow:inset 0 0 0 2px var(--px-paper2),3px 3px 0 #000a;cursor:pointer;touch-action:manipulation}
+.home-menu button b,.law-buttons button b{font-family:var(--px-font);font-weight:400;font-size:16px;line-height:1.25;text-align:center}
+.home-menu button small,.law-buttons button small{font-size:12px;color:#7b6748}
+.home-menu button:active,.law-buttons button:active:not(:disabled){transform:translate(2px,2px);box-shadow:inset 0 0 0 2px var(--px-paper2),1px 1px 0 #000a}
+.office-ledger{max-width:760px;margin-left:auto;margin-right:auto}
+.law-picker{max-width:760px;margin:12px auto 0}
+.picker-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:10px 12px;background:var(--px-navy);color:#ead8ae;border:3px solid var(--px-line);box-shadow:3px 3px 0 #0009}
+.picker-head h1{flex:1;min-width:0;margin:0;font-family:var(--px-font);font-weight:400;font-size:20px;line-height:1.3;color:var(--px-lamp)}.picker-head h1 small{font-size:14px;color:#cdbb92}
+.picker-head select{min-height:40px;padding:0 6px;background:#2b3b4b;color:#ead8ae;border:2px solid #5f7286;border-radius:0;font-size:13px}
+.picker-head .text-button{min-height:40px;padding:0 10px;background:none;color:#cdbb92;border:2px solid #5f7286;border-radius:0;font-size:13px}
+.law-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.law-buttons button{min-height:62px}
+.law-buttons button:disabled{opacity:.45;cursor:default}
+.review-box .law-buttons button.has-items small{color:var(--px-red2);font-weight:700}
+.law-all{width:100%;min-height:52px;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px}
+.picker-empty{margin:10px 0 0;padding:12px;text-align:center;font-size:14px;color:#d8c49a}
+.review-box .case-list{margin-top:10px}
+.review-box .review-case-row small{color:#7b6748}
+@media(min-width:751px){.law-buttons{grid-template-columns:repeat(4,1fr)}.law-buttons button{min-height:76px}}
+@media(max-width:750px){
+ .picker-head{padding:8px 10px;margin-bottom:8px}
+ .picker-head h1{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.picker-head h1 small{font-size:13px}
+ .picker-head select{min-height:36px;font-size:12px;padding:0 2px}
+ .law-buttons{gap:6px}.law-buttons button{min-height:54px;padding:5px 4px;gap:1px}.law-buttons button b{font-size:15px}.law-buttons button small{font-size:11px}
+ .law-picker .law-all{min-height:48px;margin-top:8px}
+ .law-picker{margin-top:8px}
+}
+.review-snippet{margin:2px 0 0;font-size:13px;line-height:1.5;color:#5d4c33;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* Readability: break Korean lines between words, not inside them. */
+.game-app,.result-sheet,.lawbook-dialog{word-break:keep-all;overflow-wrap:break-word}
+.case-copy p,.case-copy li,.rule-text,.lawbook-text,.case-paper h2,.review-snippet{text-wrap:pretty}
+
+/* Result sheet: slide the explanation away to look at the complaint again. */
+.result-sheet .sheet-slide{flex:0 1 auto;min-height:0;display:grid;grid-template-rows:1fr;transition:grid-template-rows .26s ease}
+.result-sheet .sheet-slide>.sheet-body{min-height:0;transition:padding .26s ease}
+.result-sheet.is-collapsed .sheet-slide{grid-template-rows:0fr}
+.result-sheet.is-collapsed .sheet-body{padding-top:0;padding-bottom:0;overflow:hidden}
+.sheet-toggle{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:44px;margin-top:8px;background:#d9c79c;color:#3b2f1f;border:3px solid var(--px-line);border-radius:0;font-family:var(--px-font);font-size:15px;cursor:pointer;touch-action:manipulation;box-shadow:inset 0 3px #fff6,inset 0 -3px #0003,2px 2px 0 #000a}
+.sheet-toggle:active{transform:translate(1px,2px)}
+.case-desk.is-answered.sheet-collapsed{padding-bottom:calc(250px + env(safe-area-inset-bottom))}
+@media(prefers-reduced-motion:reduce){.result-sheet .sheet-slide,.result-sheet .sheet-body{transition:none}}
+
+/* Law book (shared by the phone dialog and the desktop side panel). */
+.lawbook{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--px-paper);color:var(--px-ink)}
+.lawbook-head{display:flex;align-items:center;gap:8px;padding:10px;background:var(--px-navy);border-bottom:3px solid var(--px-line)}
+.lawbook-head select{flex:1;min-width:0;min-height:42px;padding:0 8px;background:#2b3b4b;color:#ead8ae;border:2px solid #5f7286;border-radius:0;font-family:var(--px-font);font-size:16px}
+.lawbook-close{display:grid;place-items:center;width:44px;height:44px;flex-shrink:0;padding:0;background:#2b3b4b;color:#ead8ae;border:2px solid #5f7286;border-radius:0;cursor:pointer}
+.lawbook-search{display:flex;align-items:center;gap:6px;margin:8px 10px 4px;padding:0 10px;background:#f8f0dc;border:2px solid #c9b07e;color:#7b6748}
+.lawbook-search input{flex:1;min-width:0;min-height:40px;border:0;background:none;color:var(--px-ink);font-size:16px;outline:none}
+.lawbook-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 10px 16px;-webkit-overflow-scrolling:touch}
+.lawbook-law{margin:14px 0 4px;padding:3px 8px;display:inline-block;background:var(--px-ink);color:var(--px-paper);font-family:var(--px-font);font-weight:400;font-size:12px}
+.lawbook-list details{border-bottom:1px dashed #c3ab7b}
+.lawbook-list summary{padding:11px 4px;cursor:pointer;font-weight:700;font-size:15px;color:#3c3122;list-style-position:inside}
+.lawbook-list details.is-focus summary{background:#f2b45a55}
+.lawbook-text{margin:0 0 8px;padding:10px 12px;background:#f8f0dc;border:2px solid #c9b07e;white-space:pre-line;font-family:'Noto Serif KR',Batang,serif;font-size:calc(15px * var(--reading-scale,1));line-height:1.8;color:#3c3122}
+.lawbook-list details a{display:inline-flex;align-items:center;gap:3px;margin:0 0 10px;font-size:13px;color:#2f5d8c}
+.lawbook-empty{padding:20px;text-align:center;color:#7b6748}
+.lawbook-dialog{position:fixed;inset:0;z-index:95;display:flex;flex-direction:column;background:var(--px-paper);padding-bottom:env(safe-area-inset-bottom);animation:sheet-up .22s ease-out both}
+.lawbook-dialog .lawbook{flex:1}
+@keyframes sheet-up{from{transform:translateY(100%)}to{transform:none}}
+
+/* Home: a law book sitting in the examiner's office scene. */
+.home-art{position:relative}
+.lawbook-open{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;align-items:center;gap:1px;padding:6px 10px 5px;background:#141c26e0;color:var(--px-lamp);border:3px solid var(--px-line);border-radius:0;box-shadow:3px 3px 0 #000a,inset 0 0 0 2px #3a4c5e;font-family:var(--px-font);font-size:13px;cursor:pointer;touch-action:manipulation;animation:book-bob 1.6s steps(2,end) infinite}
+.lawbook-open:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #000a}
+.book-sprite{image-rendering:pixelated;display:block}
+@keyframes book-bob{50%{translate:0 -2px}}
+@media(prefers-reduced-motion:reduce){.lawbook-open{animation:none}}
+
+/* Desktop: complaint on the left, law book column on the right. Phones keep the single column. */
+.law-panel{display:none}
+@media(min-width:1100px){
+ :root{--desk-w:min(1240px,calc(100vw - 80px));--law-w:clamp(360px,32vw,460px);--desk-gap:20px;--paper-w:calc(var(--desk-w) - var(--law-w) - var(--desk-gap))}
+ .study-hud{width:var(--paper-w);max-width:none;margin-left:calc(50% - var(--desk-w) / 2);margin-right:0}
+ .case-desk{display:grid;grid-template-columns:minmax(0,1fr) var(--law-w);column-gap:var(--desk-gap);align-items:start;width:var(--desk-w);max-width:none;margin-left:calc(50% - var(--desk-w) / 2);margin-right:0}
+ .case-desk>.case-paper{grid-column:1;grid-row:1}
+ .law-panel{display:flex;flex-direction:column;grid-column:2;grid-row:1;position:sticky;top:12px;height:max(420px,calc(100dvh - 200px));background:var(--px-paper);border:3px solid var(--px-line);box-shadow:5px 5px 0 #000a;overflow:hidden}
+ .law-cover{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:linear-gradient(90deg,#3b1a12 0 14px,#6b2a1e 14px 18px,#5a2a1e 18px);color:var(--px-lamp);border:0;border-radius:0;font-family:var(--px-font);cursor:pointer;box-shadow:inset 0 0 0 6px #2a120c,inset 0 0 0 9px #b8893c}
+ .law-cover b{font-weight:400;font-size:22px}.law-cover small{font-size:13px;color:#e3c99a}
+ .law-cover:hover{filter:brightness(1.1)}
+ .thumb-dock,.result-sheet{left:calc(50% - var(--desk-w) / 2);width:var(--paper-w);transform:none;border-left:3px solid var(--px-line);border-right:3px solid var(--px-line)}
+ .result-sheet{animation-name:sheet-rise-pc}
+}
+@keyframes sheet-rise-pc{from{transform:translateY(100%)}to{transform:none}}
+.lawbook-list summary b{margin-right:8px}.lawbook-list summary span{font-weight:400;color:#5d4c33}
+.lawbook-list{position:relative}
+/* Stamp sits in the empty top-right corner so it never covers the complaint text. */
+.case-paper .ink-stamp{top:8px;right:10px;bottom:auto;font-size:22px;padding:4px 12px}

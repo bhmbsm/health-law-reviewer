@@ -1,7 +1,9 @@
 'use client';
 import {useEffect,useRef,useState,useSyncExternalStore,type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
-import {Check,X,HelpCircle,ArrowRight,BookOpen,ChevronDown,ChevronUp,ExternalLink} from 'lucide-react';
+import {Check,X,HelpCircle,ArrowRight,BookOpen,ChevronDown,ChevronUp,ExternalLink,FileText} from 'lucide-react';
+import LawBook,{useLawBook,BookSprite,formatLawText} from './LawBook';
+import {storyLaw} from '../lib/story-curriculum';
 import CaseText from './CaseText';
 import ReviewAddButton from './ReviewAddButton';
 import {caseNarrative} from '../lib/case-narrative';
@@ -69,9 +71,11 @@ export default function CaseDesk({item,meta,result,unknownAnswer=false,saving,on
   window.addEventListener('keydown',onKey);
   return()=>window.removeEventListener('keydown',onKey);
  },[answered,armed,saving,onAnswer,onNext]);
- const verdict=answered?(unknownAnswer?'복습에 추가했습니다':result?'정답입니다':'오답입니다'):'';
+ const verdict=answered?(unknownAnswer?'재심사함에 넣었습니다':result?'정답입니다':'오답입니다'):'';
  const tone=!answered?'':unknownAnswer?'unknown':result?'correct':'wrong';
  const source=lawUrl||item.source;
+ const book=useLawBook();
+ const category=storyLaw(item.law);
  return <div className={`case-desk ${answered?'is-answered':''} ${collapsed?'sheet-collapsed':''} ${className}`.trim()}>
   <article className={`case-paper ${answered?'case-filed':''} ${tone==='correct'?'case-correct':tone==='wrong'?'case-incorrect':''}`} aria-label="민원 접수 서류">
    <div className="case-paper-head"><span className="pixel-label">민원 접수</span>{meta.length>0&&<div className="chips">{meta.map((label,index)=><span key={index}>{label}</span>)}</div>}</div>
@@ -80,25 +84,26 @@ export default function CaseDesk({item,meta,result,unknownAnswer=false,saving,on
    {answered&&!unknownAnswer&&<div className={`ink-stamp ${decision?'ink-green':'ink-red'}`} role="img" aria-label={result?'정답':'오답'}>{decision?'승인':'반려'}</div>}
    <div className="document-foot">제출자: {sender||item.sender||'보건법규 심사 접수실'} · 학습용 가상 사건</div>
   </article>
+  {book.entries.length>0&&<aside className={`law-panel ${book.open?'is-open':''}`} aria-label="법전">{book.open?<LawBook key={category} initialCategory={category} focus={answered?{law:item.law,article:item.article}:undefined} onClose={()=>book.setOpen(false)}/>:<button type="button" className="law-cover" onClick={()=>book.setOpen(true)}><BookSprite size={64}/><b>법전 펼치기</b><small>{item.law}</small></button>}</aside>}
   {dock(!answered?<div className="thumb-dock" role="group" aria-label="판단">
    <div className="decision-buttons">
     <button type="button" className="reject" disabled={saving} onClick={()=>onAnswer(false)}><X size={24} aria-hidden="true"/><span>반려<small>보완 필요</small></span></button>
     <button type="button" className="approve" disabled={saving} onClick={()=>onAnswer(true)}><Check size={24} aria-hidden="true"/><span>승인<small>요건 충족</small></span></button>
-    <button type="button" className="unknown" disabled={saving} onClick={()=>onAnswer(null)}><HelpCircle size={16} aria-hidden="true"/>모르겠음 <small>· 오답 재심사에 추가</small></button>
+    <button type="button" className="unknown" disabled={saving} onClick={()=>onAnswer(null)}><HelpCircle size={16} aria-hidden="true"/>모르겠음</button>
    </div>
-   <p className="dock-hint" aria-live="polite">{saving?'심사 기록 저장 중…':'서류만 보고 판단하세요. 해설과 법전은 판단 후 열립니다.'}</p>
+   {saving&&<p className="dock-hint" aria-live="polite">저장 중…</p>}
   </div>:<section className={`result-sheet story-feedback tone-${tone} ${collapsed?'is-collapsed':''}`} aria-label="심사 결과와 해설">
    <button type="button" className="sheet-handle" onClick={()=>setCollapsed(value=>!value)} aria-expanded={!collapsed} aria-label={collapsed?'해설 펼치기':'해설 접고 서류 보기'}><span/>{collapsed?<ChevronUp size={16}/>:<ChevronDown size={16}/>}</button>
    <div className="sheet-verdict" role="status"><strong>{verdict}</strong><span>정답은 <b className={item.answer?'answer-approve':'answer-reject'}>{item.answer?'승인':'반려'}</b></span></div>
-   <div className="sheet-body" hidden={collapsed}>
+   <div className="sheet-slide" aria-hidden={collapsed}><div className="sheet-body" inert={collapsed}>
     <section className="sheet-section"><h3><span className="pixel-label">해설</span></h3><CaseText text={item.explanation}/></section>
     <section className="sheet-section sheet-law"><h3><span className="pixel-label"><BookOpen size={14} aria-hidden="true"/> 법전</span><small>{item.law} {item.article}</small></h3>
-     {item.rule?<p className="rule-text">{item.rule}</p>:null}
+     {item.rule?<p className="rule-text">{formatLawText(item.rule)}</p>:null}
      {source&&<a href={source} target="_blank" rel="noreferrer">국가법령정보센터에서 원문 확인 <ExternalLink size={13} aria-hidden="true"/></a>}
     </section>
     {(result===true&&onAddReview)||extra?<div className="sheet-actions">{result===true&&onAddReview&&<ReviewAddButton added={inReview} busy={saving} onAdd={onAddReview}/>}{extra}</div>:null}
-   </div>
-   <div className="sheet-footer"><button ref={nextRef} type="button" className="primary next-button" disabled={saving||!armed} onClick={onNext}>{nextLabel}<ArrowRight size={20} aria-hidden="true"/></button></div>
+   </div></div>
+   <div className="sheet-footer"><button ref={nextRef} type="button" className="primary next-button" disabled={saving||!armed} onClick={onNext}>{nextLabel}<ArrowRight size={20} aria-hidden="true"/></button><button type="button" className="sheet-toggle" onClick={()=>setCollapsed(value=>!value)} aria-expanded={!collapsed}>{collapsed?<><BookOpen size={16} aria-hidden="true"/>해설 보기<ChevronUp size={16} aria-hidden="true"/></>:<><FileText size={16} aria-hidden="true"/>문제 보기<ChevronDown size={16} aria-hidden="true"/></>}</button></div>
   </section>)}
  </div>;
 }
