@@ -34,7 +34,7 @@ test('guest bank route reads only educational payloads without account lookup',a
   assert.ok(!new Headers(options.headers).get('authorization')?.includes('member-token'));
   return Response.json(rows);
  };
- try{const response=await GET();assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');assert.deepEqual(unpackQuestionBanks(await response.json()),rows);assert.equal(requests,1);}
+ try{const response=await GET();assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/^public, max-age=0, s-maxage=60, stale-while-revalidate=600$/);assert.deepEqual(unpackQuestionBanks(await response.json()),rows);assert.equal(requests,1);}
  finally{globalThis.fetch=oldFetch;}
 });
 test('public bank failures do not expose account or administrator data',async()=>{
@@ -42,10 +42,12 @@ test('public bank failures do not expose account or administrator data',async()=
  try{globalThis.fetch=async()=>Response.json({message:'permission denied'},{status:403});const response=await GET();assert.equal(response.status,503);assert.equal(response.headers.get('cache-control'),'no-store');assert.deepEqual(await response.json(),{error:'문제은행을 불러오지 못했습니다.'});}
  finally{globalThis.fetch=old;}
 });
-test('guest browser loads uncached questions without credentials and handles connection failure',async()=>{
+test('guest browser loads CDN-cacheable questions without credentials and handles connection failure',async()=>{
  const old=globalThis.fetch;
  try{
-  globalThis.fetch=async(url,options)=>{assert.equal(url,'/api/question-bank');assert.equal(options.cache,'no-store');assert.equal(new Headers(options.headers).has('authorization'),false);return Response.json(packQuestionBanks(rows));};
+  globalThis.fetch=async(url,options)=>{assert.match(url,/^\/api\/question-bank\?fresh=\d+$/);assert.equal(options.cache,'no-store');return Response.json(packQuestionBanks(rows));};
+  assert.deepEqual(await loadPublicQuestionBanks({fresh:true}),rows);
+  globalThis.fetch=async(url,options)=>{assert.equal(url,'/api/question-bank');assert.equal(options.cache,'default');assert.equal(new Headers(options.headers).has('authorization'),false);return Response.json(packQuestionBanks(rows));};
   assert.deepEqual(await loadPublicQuestionBanks(),rows);
   globalThis.fetch=async()=>{throw new TypeError('Failed to fetch');};
   await assert.rejects(loadPublicQuestionBanks(),/연결이 지연/);
