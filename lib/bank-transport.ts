@@ -31,9 +31,10 @@ export function unpackQuestionBanks(value:PackedBank):SharedRow[] {
  return rows;
 }
 
-export async function loadPublicQuestionBanks():Promise<SharedRow[]> {
+/** Normal loads may use the CDN copy; `fresh` (after an admin upload) skips every cache. */
+export async function loadPublicQuestionBanks({fresh=false}:{fresh?:boolean}={}):Promise<SharedRow[]> {
  try{
-  const response=await fetch('/api/question-bank',{cache:'no-store',signal:AbortSignal.timeout(15000)});
+  const response=await fetch(fresh?'/api/question-bank?fresh='+Date.now():'/api/question-bank',{cache:fresh?'no-store':'default',signal:AbortSignal.timeout(15000)});
   if(!response.ok)throw Error('문제은행을 불러오지 못했습니다. 다시 불러오기를 눌러 주세요.');
   return unpackQuestionBanks(await response.json());
  }catch(error){

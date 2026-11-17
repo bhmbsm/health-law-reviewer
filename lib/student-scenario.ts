@@ -82,10 +82,21 @@ const insurance:Record<string,string>={
  '제1항에 따른 계약은':'공단 이사장과 의약계 대표자가 요양급여비용을 정하는 계약은',
  '국내체류 외국인등(제9항 단서의 적용을 받는 사람에 한정한다)':'국내체류 외국인등(그 특성을 고려하여 보건복지부장관이 보험료 부과·징수 기준을 별도로 고시하는 적용 대상자에 한정한다)'
 };
-const expand=(text:string,law:string):string[]=>{
- const map=law.startsWith('의료법')||law==='간호법'?medical:law==='국민건강보험법'?insurance:{};
+const medicalEntries=Object.entries(medical),insuranceEntries=Object.entries(insurance);
+// Bank generation expands the same template strings thousands of times; results are pure, so reuse them.
+const expandCache=new Map<string,readonly string[]>();
+const expand=(text:string,law:string):readonly string[]=>{
+ const entries=law.startsWith('의료법')||law==='간호법'?medicalEntries:law==='국민건강보험법'?insuranceEntries:null;
+ if(!entries)return [text];
+ const key=(entries===medicalEntries?'M':'I')+'\u0000'+text;
+ const cached=expandCache.get(key);if(cached)return cached;
  let values=[text];
- for(const [from,to]of Object.entries(map))values=values.flatMap(v=>v.includes(from)?(Array.isArray(to)?to:[to]).map(x=>v.split(from).join(x)):[v]);
+ for(const [from,to]of entries){
+  if(!values.some(v=>v.includes(from)))continue;
+  values=values.flatMap(v=>v.includes(from)?(Array.isArray(to)?to:[to]).map(x=>v.split(from).join(x)):[v]);
+ }
+ if(expandCache.size>20000)expandCache.clear();
+ expandCache.set(key,values);
  return values;
 };
 export function studentText(text:string,law:string):string{
