@@ -31,10 +31,12 @@ export function unpackQuestionBanks(value:PackedBank):SharedRow[] {
  return rows;
 }
 
-/** Normal loads may use the CDN copy; `fresh` (after an admin upload) skips every cache. */
-export async function loadPublicQuestionBanks({fresh=false}:{fresh?:boolean}={}):Promise<SharedRow[]> {
+/** Member-only content must never enter a shared CDN or browser cache. */
+export async function loadMemberQuestionBanks(accessToken:string):Promise<SharedRow[]> {
+ if(!accessToken)throw Error('로그인 후 문제를 불러올 수 있습니다.');
  try{
-  const response=await fetch(fresh?'/api/question-bank?fresh='+Date.now():'/api/question-bank',{cache:fresh?'no-store':'default',signal:AbortSignal.timeout(15000)});
+  const response=await fetch('/api/question-bank',{headers:{Authorization:`Bearer ${accessToken}`},cache:'no-store',signal:AbortSignal.timeout(15000)});
+  if(response.status===401)throw Error('로그인이 만료되었습니다. 다시 로그인해 주세요.');
   if(!response.ok)throw Error('문제은행을 불러오지 못했습니다. 다시 불러오기를 눌러 주세요.');
   return unpackQuestionBanks(await response.json());
  }catch(error){
