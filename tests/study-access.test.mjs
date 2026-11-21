@@ -5,17 +5,11 @@ const vite=await createServer({appType:'custom',configFile:false,server:{middlew
 after(()=>vite.close());
 const {isRegisteredStudyUser}=await vite.ssrLoadModule('/lib/study-access.ts');
 const {GET}=await vite.ssrLoadModule('/app/api/study/route.ts');
-test('only registered identities use account-owned records',()=>{
- assert.equal(isRegisteredStudyUser(null),false);
- assert.equal(isRegisteredStudyUser(undefined),false);
- assert.equal(isRegisteredStudyUser({id:''}),false);
- assert.equal(isRegisteredStudyUser({id:'anon',is_anonymous:true}),false);
- assert.equal(isRegisteredStudyUser({id:'member',is_anonymous:false}),true);
- assert.equal(isRegisteredStudyUser({id:'legacy-member'}),true);
+test('only email-confirmed registered identities can study',()=>{
+ for(const user of [null,undefined,{id:''},{id:'anon',is_anonymous:true,email_confirmed_at:'now'},{id:'unconfirmed'},{id:'pending',email_confirmed_at:null}])assert.equal(isRegisteredStudyUser(user),false);
+ assert.equal(isRegisteredStudyUser({id:'member',is_anonymous:false,email_confirmed_at:'2026-11-01'}),true);
 });
-test('guest study entry is available without account credentials',async()=>{
- const response=await GET();
- assert.equal(response.status,200);
- assert.equal(response.headers.get('cache-control'),'no-store');
- assert.deepEqual(await response.json(),{message:'로그인 없이 학습할 수 있습니다. 게스트 기록은 이 브라우저에 저장됩니다.'});
+test('study entry requires authentication even through direct requests',async()=>{
+ const response=await GET(new Request('https://app.test/api/study'));
+ assert.equal(response.status,401);assert.equal(response.headers.get('cache-control'),'no-store');assert.match((await response.json()).error,/이메일 인증/);
 });

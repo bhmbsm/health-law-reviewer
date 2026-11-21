@@ -9,6 +9,7 @@ import ReviewAddButton from './ReviewAddButton';
 import {caseNarrative} from '../lib/case-narrative';
 import {studentCaseTitle} from '../lib/question-bank';
 import type {Case} from '../lib/cases';
+import QuestionReportButton from './QuestionReportButton';
 
 /** Delay before "next" accepts input so a double tap on a stamp cannot skip the explanation. */
 export const NEXT_GUARD_MS=350;
@@ -78,7 +79,7 @@ export default function CaseDesk({item,meta,result,unknownAnswer=false,saving,on
  const category=storyLaw(item.law);
  return <div className={`case-desk ${answered?'is-answered':''} ${collapsed?'sheet-collapsed':''} ${className}`.trim()}>
   <article className={`case-paper ${answered?'case-filed':''} ${tone==='correct'?'case-correct':tone==='wrong'?'case-incorrect':''}`} aria-label="민원 접수 서류">
-   <div className="case-paper-head"><span className="pixel-label">민원 접수</span>{meta.length>0&&<div className="chips">{meta.map((label,index)=><span key={index}>{label}</span>)}</div>}</div>
+   <div className="case-paper-head"><span className="pixel-label">민원 접수</span>{meta.length>0&&<div className="chips">{meta.map((label,index)=><span key={index}>{label}</span>)}</div>}<QuestionReportButton key={item.id} item={item} disabled={saving}/></div>
    <h2>{studentCaseTitle(item)}</h2>
    <CaseText className="case-body" text={caseNarrative(item)}/>
    {answered&&!unknownAnswer&&<div className={`ink-stamp ${decision?'ink-green':'ink-red'}`} role="img" aria-label={result?'정답':'오답'}>{decision?'승인':'반려'}</div>}
@@ -96,7 +97,7 @@ export default function CaseDesk({item,meta,result,unknownAnswer=false,saving,on
    <button type="button" className="sheet-handle" onClick={()=>setCollapsed(value=>!value)} aria-expanded={!collapsed} aria-label={collapsed?'해설 펼치기':'해설 접고 서류 보기'}><span/>{collapsed?<ChevronUp size={16}/>:<ChevronDown size={16}/>}</button>
    <div className="sheet-verdict" role="status"><strong>{verdict}</strong><span>정답은 <b className={item.answer?'answer-approve':'answer-reject'}>{item.answer?'승인':'반려'}</b></span></div>
    <div className="sheet-slide" aria-hidden={collapsed}><div className="sheet-body" inert={collapsed}>
-    <section className="sheet-section"><h3><span className="pixel-label">해설</span></h3><CaseText text={item.explanation}/></section>
+    <section className="sheet-section"><h3><span className="pixel-label">해설</span><QuestionReportButton key={item.id} item={item} disabled={saving}/></h3><CaseText text={item.explanation}/></section>
     <section className="sheet-section sheet-law"><h3><span className="pixel-label"><BookOpen size={14} aria-hidden="true"/> 법전</span><small>{item.law} {item.article}</small></h3>
      {item.rule?<p className="rule-text">{formatLawText(item.rule)}</p>:null}
      {source&&<a href={source} target="_blank" rel="noreferrer">국가법령정보센터에서 원문 확인 <ExternalLink size={13} aria-hidden="true"/></a>}
